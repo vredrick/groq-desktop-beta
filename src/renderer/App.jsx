@@ -193,48 +193,164 @@ function App() {
       let hasToolCalls = false;
       
       do {
-        // Call Groq API with the current message history
-        const response = await window.electron.sendChatMessage(currentMessages, selectedModel);
-        
-        if (response.error) {
-          setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${response.error}` }]);
-          break;
-        }
-        
-        // Add assistant response to messages
-        const assistantMessage = { 
-          role: 'assistant', 
-          content: response.content,
-          tool_calls: response.tool_calls,
-          reasoning: response.reasoning
-        };
-        
-        setMessages(prev => [...prev, assistantMessage]);
-        
-        // Check if there are tool calls to process
-        hasToolCalls = response.tool_calls && response.tool_calls.length > 0;
-        
-        if (hasToolCalls) {
-          // Process all tool calls and collect tool response messages
-          const toolResponseMessages = await processToolCalls(assistantMessage);
+        try {
+          // Create a streaming assistant message placeholder
+          const assistantMessage = { 
+            role: 'assistant', 
+            content: '',
+            isStreaming: true
+          };
           
-          // Add all tool response messages to the state
-          setMessages(prev => [...prev, ...toolResponseMessages]);
+          // Add the empty assistant message that will be updated as we stream
+          setMessages(prev => [...prev, assistantMessage]);
           
-          // Update current messages for the next API call if needed - ensure tool messages are included as separate messages
-          currentMessages = [
-            ...currentMessages,
-            {
-              role: assistantMessage.role,
-              content: assistantMessage.content,
-              tool_calls: assistantMessage.tool_calls
-            },
-            ...toolResponseMessages.map(msg => ({
-              role: 'tool',
-              content: msg.content, 
-              tool_call_id: msg.tool_call_id
-            }))
-          ];
+          // Start streaming chat
+          const streamHandler = window.electron.startChatStream(currentMessages, selectedModel);
+          
+          // Collect the final message data
+          let finalAssistantMessage = {
+            role: 'assistant',
+            content: '',
+            tool_calls: undefined,
+            reasoning: undefined
+          };
+          
+          // Setup event handlers for streaming
+          streamHandler.onStart(() => {
+            // Message started streaming, already created the placeholder
+          });
+          
+          streamHandler.onContent(({ content }) => {
+            // Update content as it streams in
+            finalAssistantMessage.content += content;
+            
+            // Update the message in state
+            setMessages(prev => {
+              const newMessages = [...prev];
+              // Find the last assistant message which is the streaming one
+              const lastAssistantIndex = newMessages.findIndex(
+                msg => msg.role === 'assistant' && msg.isStreaming
+              );
+              
+              if (lastAssistantIndex !== -1) {
+                newMessages[lastAssistantIndex] = {
+                  ...newMessages[lastAssistantIndex],
+                  content: finalAssistantMessage.content
+                };
+              }
+              return newMessages;
+            });
+          });
+          
+          streamHandler.onToolCalls(({ tool_calls }) => {
+            // Update the tool calls
+            finalAssistantMessage.tool_calls = tool_calls;
+            
+            // Update the message in state to show tool calls in progress
+            setMessages(prev => {
+              const newMessages = [...prev];
+              const lastAssistantIndex = newMessages.findIndex(
+                msg => msg.role === 'assistant' && msg.isStreaming
+              );
+              
+              if (lastAssistantIndex !== -1) {
+                newMessages[lastAssistantIndex] = {
+                  ...newMessages[lastAssistantIndex],
+                  tool_calls: finalAssistantMessage.tool_calls
+                };
+              }
+              return newMessages;
+            });
+          });
+          
+          // Handle stream completion
+          await new Promise((resolve, reject) => {
+            streamHandler.onComplete((data) => {
+              // Update the final message with all data
+              finalAssistantMessage = {
+                role: 'assistant',
+                content: data.content || '',
+                tool_calls: data.tool_calls,
+                reasoning: data.reasoning
+              };
+              
+              // Replace the streaming message with the final version
+              setMessages(prev => {
+                const newMessages = [...prev];
+                const lastAssistantIndex = newMessages.findIndex(
+                  msg => msg.role === 'assistant' && msg.isStreaming
+                );
+                
+                if (lastAssistantIndex !== -1) {
+                  newMessages[lastAssistantIndex] = finalAssistantMessage;
+                }
+                return newMessages;
+              });
+              
+              resolve();
+            });
+            
+            streamHandler.onError(({ error }) => {
+              console.error('Stream error:', error);
+              reject(new Error(error));
+            });
+          });
+          
+          // Clean up stream handlers
+          streamHandler.cleanup();
+          
+          // Check if there are tool calls to process
+          hasToolCalls = finalAssistantMessage.tool_calls && finalAssistantMessage.tool_calls.length > 0;
+          
+          if (hasToolCalls) {
+            // Process all tool calls and collect tool response messages
+            const toolResponseMessages = await processToolCalls(finalAssistantMessage);
+            
+            // Add all tool response messages to the state
+            setMessages(prev => [...prev, ...toolResponseMessages]);
+            
+            // Update current messages for the next API call if needed - ensure tool messages are included as separate messages
+            currentMessages = [
+              ...currentMessages,
+              {
+                role: finalAssistantMessage.role,
+                content: finalAssistantMessage.content,
+                tool_calls: finalAssistantMessage.tool_calls
+              },
+              ...toolResponseMessages.map(msg => ({
+                role: 'tool',
+                content: msg.content, 
+                tool_call_id: msg.tool_call_id
+              }))
+            ];
+          }
+        } catch (error) {
+          console.error('Error in streaming chat:', error);
+          setMessages(prev => {
+            const newMessages = [...prev];
+            // Find the streaming message to replace with an error
+            const streamingMsgIndex = newMessages.findIndex(
+              msg => msg.role === 'assistant' && msg.isStreaming
+            );
+            
+            if (streamingMsgIndex !== -1) {
+              // Replace the streaming message with an error message
+              newMessages[streamingMsgIndex] = {
+                role: 'assistant',
+                content: `Error: ${error.message}`,
+                isStreaming: false
+              };
+            } else {
+              // Add a new error message if we can't find the streaming one
+              newMessages.push({
+                role: 'assistant',
+                content: `Error: ${error.message}`
+              });
+            }
+            return newMessages;
+          });
+          // Stop the loop
+          hasToolCalls = false;
         }
       } while (hasToolCalls);
       
@@ -328,7 +444,6 @@ function App() {
       setMcpServersStatus({ loading: false, message: "Error refreshing MCP tools" });
     }
   };
-
   return (
     <div className="flex flex-col h-screen">
       <header className="bg-white dark:bg-gray-800 shadow">
@@ -374,7 +489,7 @@ function App() {
                       }
                     }}
                   >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   </div>

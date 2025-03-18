@@ -35,6 +35,22 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
     loadConfiguredServers();
   }, [tools]);
 
+  // Add event listener for ESC key
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && onClose) {
+        onClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    
+    // Clean up the event listener when the component unmounts
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
   const toggleToolExpand = (toolName) => {
     setExpandedTools(prev => ({
       ...prev,

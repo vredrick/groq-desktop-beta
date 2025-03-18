@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 function ToolCall({ toolCall, toolResult, onExecute }) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -67,7 +69,7 @@ function ToolCall({ toolCall, toolResult, onExecute }) {
   const args = JSON.parse(func.arguments);
 
   return (
-    <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-3 mt-3 bg-gray-100 dark:bg-gray-800 shadow-sm">
+    <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-3 bg-gray-100 dark:bg-gray-800 shadow-sm">
       <div 
         className="flex justify-between items-center cursor-pointer"
         onClick={() => setIsExpanded(!isExpanded)}
@@ -95,9 +97,20 @@ function ToolCall({ toolCall, toolResult, onExecute }) {
         <div className="mt-3 pt-3 border-t border-gray-300 dark:border-gray-600">
           <div className="mb-3">
             <div className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Arguments:</div>
-            <pre className="bg-gray-200 dark:bg-gray-700 p-2.5 rounded-md text-sm overflow-x-auto">
-              {JSON.stringify(args, null, 2)}
-            </pre>
+            <div className="rounded-md text-sm overflow-x-auto">
+              <SyntaxHighlighter 
+                language="json" 
+                style={vscDarkPlus}
+                customStyle={{
+                  borderRadius: '0.375rem', 
+                  margin: 0,
+                  fontSize: '0.875rem',
+                  backgroundColor: 'rgb(55 65 81)'
+                }}
+              >
+                {JSON.stringify(args, null, 2)}
+              </SyntaxHighlighter>
+            </div>
           </div>
 
           {!result && !isLoading && !error && (
@@ -133,9 +146,35 @@ function ToolCall({ toolCall, toolResult, onExecute }) {
           {result && (
             <div className="mt-3">
               <div className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Result:</div>
-              <pre className="bg-gray-200 dark:bg-gray-700 p-2.5 rounded-md text-sm overflow-x-auto">
-                {result}
-              </pre>
+              {(() => {
+                // Check if result is valid JSON
+                try {
+                  const jsonResult = JSON.parse(result);
+                  return (
+                    <div className="rounded-md text-sm overflow-x-auto">
+                      <SyntaxHighlighter 
+                        language="json" 
+                        style={vscDarkPlus}
+                        customStyle={{
+                          borderRadius: '0.375rem', 
+                          margin: 0,
+                          fontSize: '0.875rem',
+                          backgroundColor: 'rgb(55 65 81)'
+                        }}
+                      >
+                        {JSON.stringify(jsonResult, null, 2)}
+                      </SyntaxHighlighter>
+                    </div>
+                  );
+                } catch (e) {
+                  // If not JSON, render as regular text
+                  return (
+                    <pre className="bg-gray-200 dark:bg-gray-700 p-2.5 rounded-md text-sm overflow-x-auto">
+                      {result}
+                    </pre>
+                  );
+                }
+              })()}
             </div>
           )}
         </div>

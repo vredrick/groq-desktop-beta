@@ -4,10 +4,11 @@ import remarkGfm from 'remark-gfm';
 import ToolCall from './ToolCall';
 
 function Message({ message, onToolCallExecute, allMessages }) {
-  const { role, content, tool_calls, reasoning } = message;
+  const { role, content, tool_calls, reasoning, isStreaming } = message;
   const [showReasoning, setShowReasoning] = useState(false);
   const isUser = role === 'user';
   const hasReasoning = reasoning && !isUser;
+  const isStreamingMessage = isStreaming === true;
 
   // Find tool results for this message's tool calls in the messages array
   const findToolResult = (toolCallId) => {
@@ -27,9 +28,18 @@ function Message({ message, onToolCallExecute, allMessages }) {
         className={`rounded-lg px-4 py-2 max-w-[80%] ${
           isUser 
             ? 'bg-primary text-white' 
-            : 'bg-gray-200 dark:bg-gray-700'
+            : isStreamingMessage 
+              ? 'bg-gray-200 dark:bg-gray-700 streaming-message' 
+              : 'bg-gray-200 dark:bg-gray-700'
         }`}
       >
+        {isStreamingMessage && (
+          <div className="streaming-indicator mb-1">
+            <span className="dot-1"></span>
+            <span className="dot-2"></span>
+            <span className="dot-3"></span>
+          </div>
+        )}
         <div className={`markdown-content ${isUser ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {content}

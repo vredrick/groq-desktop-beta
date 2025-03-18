@@ -22,13 +22,14 @@
   "license": "ISC",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.7.0",
-    "electron": "^27.0.0",
+    "electron": "^27.3.11",
     "electron-builder": "^24.6.4",
     "groq-sdk": "0.16.0",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-markdown": "^10.1.0",
     "react-router-dom": "7.3.0",
+    "react-syntax-highlighter": "^15.6.1",
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
@@ -56,5 +57,14 @@
       "category": "public.app-category.productivity"
     }
   },
-  "packageManager": "pnpm@10.6.4+sha512.da3d715bfd22a9a105e6e8088cfc7826699332ded60c423b14ec613a185f1602206702ff0fe4c438cb15c979081ce4cb02568e364b15174503a63c7a8e2a5f6c"
+  "packageManager": "pnpm@10.6.4+sha512.da3d715bfd22a9a105e6e8088cfc7826699332ded60c423b14ec613a185f1602206702ff0fe4c438cb15c979081ce4cb02568e364b15174503a63c7a8e2a5f6c",
+  "pnpm": {
+    "ignoredBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ],
+    "onlyBuiltDependencies": [
+      "electron"
+    ]
+  }
 }

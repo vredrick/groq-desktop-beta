@@ -192,8 +192,8 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 500;
 
-// Handler for chat completions with retry logic
-ipcMain.handle('chat-completion', async (event, messages, model) => {
+// Chat completion with streaming
+ipcMain.on('chat-stream', async (event, messages, model) => {
   try {
     const userDataPath = app.getPath('userData');
     const settingsPath = path.join(userDataPath, 'settings.json');
@@ -209,7 +209,8 @@ ipcMain.handle('chat-completion', async (event, messages, model) => {
     }
     
     if (!settings.GROQ_API_KEY || settings.GROQ_API_KEY === "<replace me>") {
-      return { error: "API key not configured. Please add your GROQ API key in settings." };
+      event.sender.send('chat-stream-error', { error: "API key not configured. Please add your GROQ API key in settings." });
+      return;
     }
     
     // Use the provided model if available, otherwise use the one from settings
@@ -235,77 +236,133 @@ ipcMain.handle('chat-completion', async (event, messages, model) => {
       });
     }
     
-    // Implement retry logic
-    let retries = 0;
-    let lastError = null;
-    
-    while (retries <= MAX_RETRIES) {
-      try {
-        // Clean message objects to remove only the reasoning field
-        const cleanedMessages = messages.map(msg => {
-          // Use object destructuring to remove only the reasoning field
-          const { reasoning, ...cleanMsg } = msg;
-          return cleanMsg;
-        });
+    // Clean message objects to remove only the reasoning field
+    const cleanedMessages = messages.map(msg => {
+      // Use object destructuring to remove only the reasoning field
+      const { reasoning, ...cleanMsg } = msg;
+      return cleanMsg;
+    });
 
-        const chatCompletionParams = {
-          messages: [{role: "system", content: "You are a helpful assistant that can use tools to help the user. Only use tools when asked for and only when applicable."}, ...cleanedMessages],
-          model: modelToUse,
-          temperature: settings.temperature,
-          top_p: settings.top_p,
-          tools: tools,
-          tool_choice: "auto"
-        };
+    const chatCompletionParams = {
+      messages: [{role: "system", content: "You are a helpful assistant that can use tools to help the user. Only use tools when asked for and only when applicable."}, ...cleanedMessages],
+      model: modelToUse,
+      temperature: settings.temperature,
+      top_p: settings.top_p,
+      tools: tools,
+      tool_choice: "auto",
+      stream: true // Enable streaming
+    };
 
-        // Only include reasoning_format for models that support it
-        if (modelToUse.includes("qwq") || modelToUse.includes("r1")) {
-          chatCompletionParams.reasoning_format = "parsed";
-        }
-
-        const chatCompletion = await groq.chat.completions.create(chatCompletionParams);
-        
-        const responseMessage = chatCompletion.choices[0]?.message;
-        
-        // Process tool calls if any
-        if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
-          // Send the initial response with the tool calls
-          return {
-            content: responseMessage.content || "",
-            role: "assistant",
-            tool_calls: responseMessage.tool_calls,
-            ...(responseMessage.reasoning && { reasoning: responseMessage.reasoning })
-          };
-        }
-        
-        // Regular message response
-        return { 
-          content: responseMessage.content || "",
-          role: "assistant",
-          ...(responseMessage.reasoning && { reasoning: responseMessage.reasoning })
-        };
-      } catch (error) {
-        lastError = error;
-        
-        // If it's a 400 error (BadRequestError) and we haven't exceeded max retries
-        if (error.status === 400 && retries < MAX_RETRIES) {
-          console.error(error);
-          console.log(`Received 400 error from Groq API. Retrying (${retries + 1}/${MAX_RETRIES})...`);
-          retries++;
-          await sleep(RETRY_DELAY_MS);
-          continue;
-        }
-        
-        // For other errors or if we've reached max retries, throw the error
-        throw error;
-      }
+    // Only include reasoning_format for models that support it
+    if (modelToUse.includes("qwq") || modelToUse.includes("r1")) {
+      chatCompletionParams.reasoning_format = "parsed";
     }
-    
-    // This should never be reached due to the throw in the catch block
-    // but adding as a fallback
-    throw lastError;
+
+    try {
+      // Initialize stream response objects to accumulate content and tool calls
+      let accumulatedContent = "";
+      let accumulatedToolCalls = [];
+      let accumulatedReasoning = null;
+      let isFirstChunk = true;
+
+      // Create the completion with streaming
+      const stream = await groq.chat.completions.create(chatCompletionParams);
+
+      // Process each chunk as it arrives
+      for await (const chunk of stream) {
+        // Skip chunks with no delta content
+        if (!chunk.choices || !chunk.choices.length || !chunk.choices[0]) continue;
+        
+        const choice = chunk.choices[0];
+        const delta = choice.delta;
+
+        // Extract data from the delta
+        if (isFirstChunk) {
+          // Send start message to client
+          event.sender.send('chat-stream-start', { 
+            id: chunk.id,
+            role: delta.role || "assistant" 
+          });
+          isFirstChunk = false;
+        }
+
+        // Accumulate content if present
+        if (delta.content) {
+          accumulatedContent += delta.content;
+          event.sender.send('chat-stream-content', { content: delta.content });
+        }
+
+        // Accumulate reasoning if present (for models that support it)
+        if (delta.reasoning) {
+          if (!accumulatedReasoning) {
+            accumulatedReasoning = delta.reasoning;
+          } else {
+            // Merge reasoning based on structure
+            if (typeof delta.reasoning === 'string') {
+              accumulatedReasoning += delta.reasoning;
+            } else if (typeof delta.reasoning === 'object') {
+              accumulatedReasoning = { ...accumulatedReasoning, ...delta.reasoning };
+            }
+          }
+        }
+
+        // Handle tool calls if present
+        if (delta.tool_calls && delta.tool_calls.length > 0) {
+          // For tool calls, we need to accumulate them and send the complete call
+          // when we receive the full chunk
+          for (const toolCallDelta of delta.tool_calls) {
+            let existingCall = accumulatedToolCalls.find(tc => tc.id === toolCallDelta.id);
+            
+            if (!existingCall) {
+              // New tool call
+              accumulatedToolCalls.push({
+                id: toolCallDelta.id,
+                type: toolCallDelta.type,
+                function: {
+                  name: toolCallDelta.function?.name || "",
+                  arguments: toolCallDelta.function?.arguments || ""
+                },
+                index: toolCallDelta.index
+              });
+            } else {
+              // Update existing tool call
+              if (toolCallDelta.function) {
+                if (toolCallDelta.function.name) {
+                  existingCall.function.name = toolCallDelta.function.name;
+                }
+                if (toolCallDelta.function.arguments) {
+                  existingCall.function.arguments += toolCallDelta.function.arguments;
+                }
+              }
+            }
+          }
+          
+          // Send tool call update (not final yet)
+          event.sender.send('chat-stream-tool-calls', { 
+            tool_calls: accumulatedToolCalls
+          });
+        }
+
+        // Check if we're done
+        if (choice.finish_reason) {
+          // Send the completion message
+          event.sender.send('chat-stream-complete', {
+            content: accumulatedContent,
+            role: "assistant",
+            tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+            reasoning: accumulatedReasoning,
+            finish_reason: choice.finish_reason
+          });
+          break;
+        }
+      }
+    } catch (error) {
+      console.error('Error in stream processing:', error);
+      event.sender.send('chat-stream-error', { error: error.message });
+    }
   } catch (error) {
-    console.error('Error getting chat completion:', error);
-    return { error: error.message };
+    console.error('Error setting up chat completion stream:', error);
+    event.sender.send('chat-stream-error', { error: error.message });
   }
 });
 

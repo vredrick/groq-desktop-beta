@@ -97,8 +97,8 @@ body {
   justify-content: center;
   color: #444;
   cursor: pointer;
-  padding: 8px;
-  border-radius: 8px;
+  padding: 5px;
+  border-radius: 6px;
   transition: all 0.2s ease;
   background-color: rgba(0, 0, 0, 0.03);
 }
@@ -163,6 +163,60 @@ body {
 
 .refresh-button:hover span {
   transform: rotate(30deg);
+}
+
+/* Streaming message animation */
+.streaming-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.streaming-indicator .dot-1,
+.streaming-indicator .dot-2,
+.streaming-indicator .dot-3 {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #999;
+  opacity: 0.6;
+}
+
+.dark .streaming-indicator .dot-1,
+.dark .streaming-indicator .dot-2,
+.dark .streaming-indicator .dot-3 {
+  background-color: #ccc;
+}
+
+.streaming-indicator .dot-1 {
+  animation: pulse-dot 1.4s infinite ease-in-out;
+  animation-delay: 0s;
+}
+
+.streaming-indicator .dot-2 {
+  animation: pulse-dot 1.4s infinite ease-in-out;
+  animation-delay: 0.2s;
+}
+
+.streaming-indicator .dot-3 {
+  animation: pulse-dot 1.4s infinite ease-in-out;
+  animation-delay: 0.4s;
+}
+
+@keyframes pulse-dot {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.8);
+    opacity: 0.6;
+  }
 }
 
 @keyframes spin {

@@ -5,8 +5,45 @@ contextBridge.exposeInMainWorld('electron', {
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   getSettingsPath: () => ipcRenderer.invoke('get-settings-path'),
   reloadSettings: () => ipcRenderer.invoke('reload-settings'),
-  sendChatMessage: (messages, model) => ipcRenderer.invoke('chat-completion', messages, model),
+  // Chat API - streaming only
   executeToolCall: (toolCall) => ipcRenderer.invoke('execute-tool-call', toolCall),
+  
+  // Streaming API events
+  startChatStream: (messages, model) => {
+    // Start a new chat stream
+    ipcRenderer.send('chat-stream', messages, model);
+    
+    // Setup event listeners for streaming responses
+    return {
+      onStart: (callback) => {
+        ipcRenderer.on('chat-stream-start', (_, data) => callback(data));
+        return () => ipcRenderer.removeListener('chat-stream-start', callback);
+      },
+      onContent: (callback) => {
+        ipcRenderer.on('chat-stream-content', (_, data) => callback(data));
+        return () => ipcRenderer.removeListener('chat-stream-content', callback);
+      },
+      onToolCalls: (callback) => {
+        ipcRenderer.on('chat-stream-tool-calls', (_, data) => callback(data));
+        return () => ipcRenderer.removeListener('chat-stream-tool-calls', callback);
+      },
+      onComplete: (callback) => {
+        ipcRenderer.on('chat-stream-complete', (_, data) => callback(data));
+        return () => ipcRenderer.removeListener('chat-stream-complete', callback);
+      },
+      onError: (callback) => {
+        ipcRenderer.on('chat-stream-error', (_, data) => callback(data));
+        return () => ipcRenderer.removeListener('chat-stream-error', callback);
+      },
+      cleanup: () => {
+        ipcRenderer.removeAllListeners('chat-stream-start');
+        ipcRenderer.removeAllListeners('chat-stream-content');
+        ipcRenderer.removeAllListeners('chat-stream-tool-calls');
+        ipcRenderer.removeAllListeners('chat-stream-complete');
+        ipcRenderer.removeAllListeners('chat-stream-error');
+      }
+    };
+  },
   
   // MCP related functions
   connectMcpServer: (serverConfig) => ipcRenderer.invoke('connect-mcp-server', serverConfig),

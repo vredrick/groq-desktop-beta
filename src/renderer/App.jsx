@@ -3,6 +3,9 @@ import { Link } from 'react-router-dom';
 import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
 import ToolsPanel from './components/ToolsPanel';
+// Import shared model definitions - REMOVED
+// import { MODEL_CONTEXT_SIZES } from '../../shared/models';
+
 
 function App() {
   const [messages, setMessages] = useState([]);
@@ -12,15 +15,26 @@ function App() {
   const [isToolsPanelOpen, setIsToolsPanelOpen] = useState(false);
   const [mcpServersStatus, setMcpServersStatus] = useState({ loading: false, message: "" });
   const messagesEndRef = useRef(null);
+  // Store the list of models from capabilities keys
+  // const models = Object.keys(MODEL_CONTEXT_SIZES).filter(key => key !== 'default'); // Old way
+  const [modelConfigs, setModelConfigs] = useState({}); // State for model configurations
+  const [models, setModels] = useState([]); // State for model list
+
+  // State for current model's vision capability
+  const [visionSupported, setVisionSupported] = useState(false);
+  // Add state to track if initial model/settings load is complete
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+
+  const handleRemoveLastMessage = () => {
+    setMessages(prev => {
+      if (prev.length === 0) return prev;
+      // Create a copy without the last message
+      return prev.slice(0, prev.length - 1);
+    });
+  };
   
-  const models = [
-    'llama-3.3-70b-versatile',
-    'llama-3.3-70b-specdec',
-    'qwen-qwq-32b',
-    'qwen-2.5-32b',
-    'deepseek-r1-distill-llama-70b',
-    'deepseek-r1-distill-llama-70b-specdec'
-  ];
+  // Models list derived from capabilities keys
+  // const models = Object.keys(MODEL_CAPABILITIES).filter(key => key !== 'default');
 
   // Function to update the server status display - moved outside useEffect
   const updateServerStatus = (tools, settings) => {
@@ -71,60 +85,114 @@ function App() {
     }
   };
 
-  // Load settings and MCP tools when component mounts
+  // Load settings, MCP tools, and model configs when component mounts
   useEffect(() => {
-    const loadSettings = async () => {
+    const loadInitialData = async () => {
       try {
         // Set loading status
         setMcpServersStatus({ loading: true, message: "Connecting to MCP servers..." });
-        
-        // Load settings
-        const settings = await window.electron.getSettings();
+
+        // Load model configurations first
+        const configs = await window.electron.getModelConfigs(); // Await configs
+        setModelConfigs(configs);
+        const availableModels = Object.keys(configs).filter(key => key !== 'default');
+        setModels(availableModels); // Set models list
+
+        // THEN Load settings
+        const settings = await window.electron.getSettings(); // Await settings
+        let effectiveModel = availableModels.length > 0 ? availableModels[0] : 'default'; // Default fallback if no models or no setting
+
         if (settings && settings.model) {
-          setSelectedModel(settings.model);
+            // Ensure the saved model is still valid against the loaded configs
+            if (configs[settings.model]) {
+                effectiveModel = settings.model; // Use saved model if valid
+            } else {
+                // If saved model is invalid, keep the default fallback (first available model)
+                console.warn(`Saved model "${settings.model}" not found in loaded configs. Falling back to ${effectiveModel}.`);
+            }
+        } else if (availableModels.length > 0) {
+             // If no model saved in settings, but models are available, use the first one
+             effectiveModel = availableModels[0];
         }
-        
-        // Initial load of MCP tools
+        // If no model in settings and no available models, effectiveModel remains 'default'
+
+        setSelectedModel(effectiveModel); // Set the final selected model state
+
+
+        // Initial load of MCP tools (can happen after model/settings)
         const mcpToolsResult = await window.electron.getMcpTools();
+        // Use the already loaded settings object here for initial status update
         if (mcpToolsResult && mcpToolsResult.tools) {
           setMcpTools(mcpToolsResult.tools);
-          updateServerStatus(mcpToolsResult.tools, settings);
+          updateServerStatus(mcpToolsResult.tools, settings); // Pass loaded settings
+        } else {
+           // Handle case where no tools are found initially, but update status
+           updateServerStatus([], settings);
         }
-        
+
         // Set up event listener for MCP server status changes
         const removeListener = window.electron.onMcpServerStatusChanged((data) => {
-          if (data.tools) {
+          if (data && data.tools !== undefined) { // Check if tools property exists
             setMcpTools(data.tools);
-            updateServerStatus(data.tools, settings);
+            // Fetch latest settings again when status changes, as they might have been updated
+            window.electron.getSettings().then(currentSettings => {
+               updateServerStatus(data.tools, currentSettings);
+            }).catch(err => {
+                console.error("Error fetching settings for status update:", err);
+                // Fallback to updating status without settings info
+                updateServerStatus(data.tools, null);
+            });
           }
         });
-        
+
         // Clean up the event listener when component unmounts
         return () => {
           if (removeListener) removeListener();
         };
       } catch (error) {
-        console.error('Error loading settings:', error);
-        setMcpServersStatus({ loading: false, message: "Error loading settings" });
+        console.error('Error loading initial data:', error);
+        setMcpServersStatus({ loading: false, message: "Error loading initial data" });
+      } finally {
+          // Mark initial load as complete regardless of success/failure
+          setInitialLoadComplete(true);
       }
     };
-    
-    loadSettings();
-  }, []);
 
-  // Save model selection to settings when it changes
+    loadInitialData();
+  }, []); // Empty dependency array ensures this runs only once on mount
+
+  // Save model selection to settings when it changes, ONLY after initial load
   useEffect(() => {
+    // Prevent saving during initial setup before models/settings are loaded/validated
+    if (!initialLoadComplete) {
+        return;
+    }
+
+    // Also ensure models list isn't empty and selectedModel is valid
+    if (models.length === 0 || !selectedModel) {
+        console.warn("Skipping model save: Models not loaded or no model selected.");
+        return;
+    }
+
     const saveModelSelection = async () => {
       try {
+        console.log(`Attempting to save selected model: ${selectedModel}`); // Debug log
         const settings = await window.electron.getSettings();
-        await window.electron.saveSettings({ ...settings, model: selectedModel });
+        // Check if the model actually changed before saving
+        if (settings.model !== selectedModel) {
+            console.log(`Saving new model selection: ${selectedModel}`);
+            await window.electron.saveSettings({ ...settings, model: selectedModel });
+        } else {
+            // console.log("Model selection hasn't changed, skipping save."); // Optional: Log skips
+        }
       } catch (error) {
         console.error('Error saving model selection:', error);
       }
     };
-    
+
     saveModelSelection();
-  }, [selectedModel]);
+    // Depend on initialLoadComplete as well to trigger after load finishes
+  }, [selectedModel, initialLoadComplete, models]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -172,13 +240,33 @@ function App() {
     }
   };
 
+  // Update vision support when selectedModel or modelConfigs changes
+  useEffect(() => {
+    if (modelConfigs && selectedModel && modelConfigs[selectedModel]) {
+      const capabilities = modelConfigs[selectedModel] || modelConfigs['default'];
+      setVisionSupported(capabilities.vision_supported);
+    } else {
+      // Handle case where configs aren't loaded yet or model is invalid
+      setVisionSupported(false);
+    }
+  }, [selectedModel, modelConfigs]);
+
+  // Handle sending message (text or structured content with images)
   const handleSendMessage = async (content) => {
-    if (!content.trim()) return;
-    
-    // Add user message
-    const userMessage = { role: 'user', content };
+    // Check if content is structured (array) or just text (string)
+    const isStructuredContent = Array.isArray(content);
+    const hasContent = isStructuredContent ? content.some(part => (part.type === 'text' && part.text.trim()) || part.type === 'image_url') : content.trim();
+
+    if (!hasContent) return;
+
+    // Format the user message based on content type
+    const userMessage = {
+      role: 'user',
+      // Content is either the direct structured array or needs to be formatted
+      content: content // Assumes ChatInput now sends the correct structured format
+    };
     setMessages(prev => [...prev, userMessage]);
-    
+
     // Set loading state
     setLoading(true);
     
@@ -312,14 +400,15 @@ function App() {
             // Update current messages for the next API call if needed - ensure tool messages are included as separate messages
             currentMessages = [
               ...currentMessages,
-              {
+              { // The assistant message that might contain tool calls
                 role: finalAssistantMessage.role,
-                content: finalAssistantMessage.content,
+                content: finalAssistantMessage.content, // Ensure this is a string
                 tool_calls: finalAssistantMessage.tool_calls
               },
+              // Map tool responses to the correct format
               ...toolResponseMessages.map(msg => ({
                 role: 'tool',
-                content: msg.content, 
+                content: msg.content, // Ensure this is a string
                 tool_call_id: msg.tool_call_id
               }))
             ];
@@ -446,17 +535,19 @@ function App() {
   };
   return (
     <div className="flex flex-col h-screen">
-      <header className="bg-white dark:bg-gray-800 shadow">
+      <header className="bg-user-message-bg shadow">
         <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Groq Desktop</h1>
+          <h1 className="text-2xl text-white">
+            groq<span className="text-primary">desktop</span>
+          </h1>
           <div className="flex items-center gap-4">
             <div className="flex items-center">
-              <label htmlFor="model-select" className="mr-3 text-gray-700 dark:text-gray-300 font-medium">Model:</label>
+              <label htmlFor="model-select" className="mr-3 text-gray-300 font-medium">Model:</label>
               <select
                 id="model-select"
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
-                className="border border-gray-300 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="border border-gray-500 rounded-md bg-transparent text-white"
               >
                 {models.map(model => (
                   <option key={model} value={model}>{model}</option>
@@ -469,18 +560,22 @@ function App() {
       </header>
       
       <main className="flex-1 overflow-hidden flex flex-col">
-        <div className="flex-1 overflow-y-auto p-4">
-          <MessageList messages={messages} onToolCallExecute={executeToolCall} />
+        <div className="flex-1 overflow-y-auto p-2">
+          <MessageList 
+            messages={messages} 
+            onToolCallExecute={executeToolCall} 
+            onRemoveLastMessage={handleRemoveLastMessage} 
+          />
           <div ref={messagesEndRef} />
         </div>
         
-        <div className="border-t dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+        <div className="bg-user-message-bg p-2">
           <div className="flex flex-col gap-4">
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-3">
                 <div className="tools-container">
                   <div 
-                    className="tools-button" 
+                    className="tools-button"
                     onClick={() => {
                       setIsToolsPanelOpen(!isToolsPanelOpen);
                       // Force refresh of MCP tools when opening panel
@@ -515,7 +610,11 @@ function App() {
               </div>
             </div>
 
-            <ChatInput onSendMessage={handleSendMessage} loading={loading} />
+            <ChatInput
+              onSendMessage={handleSendMessage}
+              loading={loading}
+              visionSupported={visionSupported}
+            />
           </div>
         </div>
       </main>

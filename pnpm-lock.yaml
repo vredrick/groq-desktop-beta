@@ -11,12 +11,6 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.7.0
         version: 1.7.0
-      electron:
-        specifier: ^27.3.11
-        version: 27.3.11
-      electron-builder:
-        specifier: ^24.6.4
-        version: 24.13.3(electron-builder-squirrel-windows@24.13.3)
       groq-sdk:
         specifier: 0.16.0
         version: 0.16.0
@@ -38,6 +32,9 @@ importers:
       remark-gfm:
         specifier: ^4.0.1
         version: 4.0.1
+      zod:
+        specifier: ^3.24.2
+        version: 3.24.2
     devDependencies:
       '@vitejs/plugin-react':
         specifier: ^4.3.4
@@ -51,6 +48,12 @@ importers:
       cross-env:
         specifier: ^7.0.3
         version: 7.0.3
+      electron:
+        specifier: ^27.3.11
+        version: 27.3.11
+      electron-builder:
+        specifier: ^24.13.3
+        version: 24.13.3(electron-builder-squirrel-windows@24.13.3)
       postcss:
         specifier: ^8.4.31
         version: 8.5.3

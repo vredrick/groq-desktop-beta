@@ -49,6 +49,8 @@ contextBridge.exposeInMainWorld('electron', {
   connectMcpServer: (serverConfig) => ipcRenderer.invoke('connect-mcp-server', serverConfig),
   disconnectMcpServer: (serverId) => ipcRenderer.invoke('disconnect-mcp-server', serverId),
   getMcpTools: () => ipcRenderer.invoke('get-mcp-tools'),
+  // Function to get model configurations
+  getModelConfigs: () => ipcRenderer.invoke('get-model-configs'),
   
   // Add event listener for MCP server status changes
   onMcpServerStatusChanged: (callback) => {

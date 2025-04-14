@@ -324,33 +324,32 @@ function Settings() {
 
   return (
     <div className="flex flex-col h-screen">
-      <header className="bg-white dark:bg-gray-800 shadow">
+      <header className="bg-user-message-bg shadow">
         <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Configuration</h1>
+          <h1 className="text-2xl font-bold text-white">Configuration</h1>
           <div className="flex space-x-4">
-            <button 
+            <button
               onClick={reloadSettingsFromDisk}
-              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+              className="px-4 py-2 bg-gray-700 text-gray-100 rounded hover:bg-gray-600 transition-colors"
             >
               Reload From Disk
             </button>
-            <Link to="/" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Back to Chat</Link>
+            <Link to="/" className="btn btn-primary">Back to Chat</Link>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto p-8 bg-gray-100 dark:bg-gray-900">
-        <div className="max-w-2xl mx-auto bg-white dark:bg-gray-800 rounded-lg shadow p-6 relative">
-          {/* Fixed position status indicator */}
+      <main className="flex-1 overflow-y-auto p-8 bg-custom-dark-bg">
+        <div className="max-w-2xl mx-auto bg-user-message-bg rounded-lg p-6 relative">
           <div className="absolute top-2 right-2 min-h-6">
             {(isSaving || saveStatus) && (
-              <div 
+              <div
                 className={`px-3 py-1 rounded text-sm transition-opacity duration-300 ${
-                  saveStatus?.type === 'error' 
-                    ? 'bg-red-100 text-red-800' 
+                  saveStatus?.type === 'error'
+                    ? 'bg-red-900 text-red-100'
                     : saveStatus?.type === 'info'
-                    ? 'bg-blue-100 text-blue-800'
-                    : 'bg-green-100 text-green-800'
+                    ? 'bg-blue-900 text-blue-100'
+                    : 'bg-green-900 text-green-100'
                 }`}
               >
                 {getStatusMessage()}
@@ -358,19 +357,18 @@ function Settings() {
             )}
           </div>
 
-          {/* Settings file path */}
           {settingsPath && (
-            <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-900 rounded text-sm">
-              <p className="text-gray-600 dark:text-gray-400">
-                Settings file location: <span className="font-mono">{settingsPath}</span>
+            <div className="mb-4 p-3 rounded text-sm bg-custom-dark-bg">
+              <p className="text-gray-400">
+                Settings file location: <span className="font-mono text-gray-300">{settingsPath}</span>
               </p>
             </div>
           )}
 
-          <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">GROQ API Settings</h2>
+          <h2 className="text-xl font-semibold mb-4 text-white">Groq API Settings</h2>
           
           <div className="mb-4">
-            <label htmlFor="api-key" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label htmlFor="api-key" className="block text-sm font-medium text-gray-300 mb-2">
               API Key
             </label>
             <div className="relative">
@@ -380,7 +378,7 @@ function Settings() {
                 name="GROQ_API_KEY"
                 value={settings.GROQ_API_KEY || ''}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full px-3 py-2 border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-transparent text-white placeholder-gray-400"
                 placeholder="Enter your GROQ API key"
               />
               <button
@@ -389,12 +387,12 @@ function Settings() {
                 onClick={() => setShowApiKey(!showApiKey)}
               >
                 {showApiKey ? (
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-500" viewBox="0 0 20 20" fill="currentColor">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
                     <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
                     <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
                   </svg>
                 ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-500" viewBox="0 0 20 20" fill="currentColor">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd" />
                     <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
                   </svg>
@@ -403,15 +401,15 @@ function Settings() {
             </div>
           </div>
 
-          <h3 className="text-lg font-medium mt-6 mb-3 text-gray-900 dark:text-white">Generation Parameters</h3>
+          <h3 className="text-lg font-medium mt-6 mb-3 text-white">Generation Parameters</h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
-              <label htmlFor="temperature" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label htmlFor="temperature" className="block text-sm font-medium text-gray-300 mb-2">
                 Temperature: {settings.temperature}
               </label>
               <div className="flex items-center">
-                <span className="mr-2 text-xs text-gray-500">0</span>
+                <span className="mr-2 text-xs text-gray-400">0</span>
                 <input
                   type="range"
                   id="temperature"
@@ -423,19 +421,19 @@ function Settings() {
                   onChange={handleNumberChange}
                   className="w-full"
                 />
-                <span className="ml-2 text-xs text-gray-500">1</span>
+                <span className="ml-2 text-xs text-gray-400">1</span>
               </div>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-400 mt-1">
                 Lower values make responses more deterministic, higher values more creative.
               </p>
             </div>
             
             <div>
-              <label htmlFor="top_p" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label htmlFor="top_p" className="block text-sm font-medium text-gray-300 mb-2">
                 Top P: {settings.top_p}
               </label>
               <div className="flex items-center">
-                <span className="mr-2 text-xs text-gray-500">0</span>
+                <span className="mr-2 text-xs text-gray-400">0</span>
                 <input
                   type="range"
                   id="top_p"
@@ -447,38 +445,40 @@ function Settings() {
                   onChange={handleNumberChange}
                   className="w-full"
                 />
-                <span className="ml-2 text-xs text-gray-500">1</span>
+                <span className="ml-2 text-xs text-gray-400">1</span>
               </div>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-400 mt-1">
                 Controls diversity by limiting tokens to the most likely ones.
               </p>
             </div>
           </div>
 
-          <h3 className="text-lg font-medium mt-8 mb-3 text-gray-900 dark:text-white">MCP Servers</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          <h3 className="text-lg font-medium mt-8 mb-3 text-white">MCP Servers</h3>
+          <p className="text-sm text-gray-400 mb-4">
             Configure MCP servers that will be automatically started when the application launches. 
             These servers provide additional tools that can be used by the AI.
           </p>
           
-          {/* Current MCP Servers */}
           {Object.keys(settings.mcpServers || {}).length > 0 ? (
             <div className="mb-6">
-              <h4 className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">Configured Servers:</h4>
-              <div className="border dark:border-gray-700 rounded-md overflow-hidden">
+              <h4 className="font-medium text-sm text-gray-300 mb-2">Configured Servers:</h4>
+              <div className="border border-gray-700 rounded-md overflow-hidden">
                 {Object.entries(settings.mcpServers || {}).map(([id, config]) => (
-                  <div key={id} className="p-3 border-b dark:border-gray-700 last:border-b-0 flex justify-between items-start bg-gray-50 dark:bg-gray-900">
+                  <div 
+                    key={id} 
+                    className="p-3 border-b border-gray-700 last:border-b-0 flex justify-between items-start bg-custom-dark-bg"
+                  >
                     <div>
-                      <div className="font-medium text-gray-800 dark:text-gray-300">{id}</div>
+                      <div className="font-medium text-gray-300">{id}</div>
                       <div className="text-sm text-gray-500 mt-1">
                         <div><span className="font-mono">$ {config.command} {(config.args || []).join(' ')}</span></div>
                         {config.env && Object.keys(config.env).length > 0 && (
                           <div className="mt-1">
-                            <span className="text-xs text-gray-600 dark:text-gray-400">Environment variables:</span>
+                            <span className="text-xs text-gray-400">Environment variables:</span>
                             <div className="pl-2 mt-1">
                               {Object.entries(config.env).map(([key, value]) => (
                                 <div key={key} className="text-xs font-mono">
-                                  {key}={value}
+                                  <span className="text-gray-300">{key}=</span><span className="text-gray-400">{value}</span>
                                 </div>
                               ))}
                             </div>
@@ -488,7 +488,7 @@ function Settings() {
                     </div>
                     <button
                       onClick={() => removeMcpServer(id)}
-                      className="text-red-600 hover:text-red-800 text-sm py-1 px-2 bg-red-100 hover:bg-red-200 rounded"
+                      className="text-red-400 hover:text-red-300 text-sm py-1 px-2 bg-red-900 hover:bg-red-800 rounded"
                     >
                       Remove
                     </button>
@@ -497,26 +497,25 @@ function Settings() {
               </div>
             </div>
           ) : (
-            <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-900 rounded-md text-center text-gray-500">
+            <div className="mb-6 p-4 bg-custom-dark-bg rounded-md text-center text-gray-500">
               No MCP servers configured. Add one below.
             </div>
           )}
           
-          {/* Add New MCP Server Form */}
-          <div className="border dark:border-gray-700 rounded-md p-4">
-            <h4 className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-3">Add New MCP Server:</h4>
+          <div className="border border-gray-700 rounded-md p-4">
+            <h4 className="font-medium text-sm text-gray-300 mb-3">Add New MCP Server:</h4>
             
             <div className="mb-4 flex">
               <button
                 type="button"
-                className={`px-4 py-2 text-sm ${!useJsonInput ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white'} rounded-l`}
+                className={`px-4 py-2 text-sm rounded-l ${!useJsonInput ? 'bg-primary text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
                 onClick={() => setUseJsonInput(false)}
               >
                 Form
               </button>
               <button
                 type="button"
-                className={`px-4 py-2 text-sm ${useJsonInput ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white'} rounded-r`}
+                className={`px-4 py-2 text-sm rounded-r ${useJsonInput ? 'bg-primary text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
                 onClick={() => setUseJsonInput(true)}
               >
                 JSON
@@ -525,7 +524,7 @@ function Settings() {
             
             <form onSubmit={addMcpServer}>
               <div className="mb-3">
-                <label htmlFor="server-id" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="server-id" className="block text-sm font-medium text-gray-300 mb-1">
                   Server ID:
                 </label>
                 <input
@@ -534,7 +533,7 @@ function Settings() {
                   name="id"
                   value={newMcpServer.id}
                   onChange={handleNewMcpServerChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                  className="w-full px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm"
                   placeholder="e.g., filesystem"
                   required
                 />
@@ -543,7 +542,7 @@ function Settings() {
               {!useJsonInput ? (
                 <>
                   <div className="mb-3">
-                    <label htmlFor="server-command" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor="server-command" className="block text-sm font-medium text-gray-300 mb-1">
                       Command:
                     </label>
                     <input
@@ -552,14 +551,14 @@ function Settings() {
                       name="command"
                       value={newMcpServer.command}
                       onChange={handleNewMcpServerChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                      className="w-full px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm"
                       placeholder="e.g., npx"
                       required
                     />
                   </div>
                   
                   <div className="mb-4">
-                    <label htmlFor="server-args" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label htmlFor="server-args" className="block text-sm font-medium text-gray-300 mb-1">
                       Arguments (space separated, use quotes for args with spaces):
                     </label>
                     <input
@@ -568,31 +567,30 @@ function Settings() {
                       name="args"
                       value={newMcpServer.args}
                       onChange={handleNewMcpServerChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                      className="w-full px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm"
                       placeholder="e.g., -y @modelcontextprotocol/server-filesystem /path/to/dir"
                     />
                   </div>
                   
-                  {/* Environment Variables */}
                   <div className="mb-4">
                     <div className="flex justify-between items-center mb-2">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <label className="text-sm font-medium text-gray-300">
                         Environment Variables:
                       </label>
                     </div>
                     
                     {Object.keys(newMcpServer.env).length > 0 && (
-                      <div className="mb-3 border dark:border-gray-700 rounded-md overflow-hidden">
+                      <div className="mb-3 border border-gray-700 rounded-md overflow-hidden">
                         {Object.entries(newMcpServer.env).map(([key, value]) => (
-                          <div key={key} className="flex justify-between items-center p-2 border-b dark:border-gray-700 last:border-b-0 bg-gray-50 dark:bg-gray-900">
+                          <div key={key} className="flex justify-between items-center p-2 border-b border-gray-700 last:border-b-0 bg-custom-dark-bg">
                             <div className="flex-1 font-mono text-sm">
-                              <span className="text-gray-700 dark:text-gray-300">{key}=</span>
-                              <span className="text-gray-600 dark:text-gray-400">{value}</span>
+                              <span className="text-gray-300">{key}=</span>
+                              <span className="text-gray-400">{value}</span>
                             </div>
                             <button
                               type="button"
                               onClick={() => removeEnvVar(key)}
-                              className="text-red-600 hover:text-red-800 text-xs py-1 px-2"
+                              className="text-red-400 hover:text-red-300 text-xs py-1 px-2"
                             >
                               Remove
                             </button>
@@ -608,7 +606,7 @@ function Settings() {
                         onChange={e => handleEnvVarChange(e)}
                         name="key"
                         placeholder="KEY"
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                        className="flex-1 px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm"
                       />
                       <input
                         type="text"
@@ -616,13 +614,13 @@ function Settings() {
                         onChange={e => handleEnvVarChange(e)}
                         name="value"
                         placeholder="VALUE"
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                        className="flex-1 px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm"
                       />
                       <button
                         type="button"
                         onClick={addEnvVar}
                         disabled={!newEnvVar.key}
-                        className="px-3 py-2 bg-blue-600 text-white rounded disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        className="px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded disabled:bg-gray-600 disabled:text-gray-400 disabled:cursor-not-allowed"
                       >
                         Add
                       </button>
@@ -631,26 +629,26 @@ function Settings() {
                 </>
               ) : (
                 <div className="mb-4">
-                  <label htmlFor="json-input" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label htmlFor="json-input" className="block text-sm font-medium text-gray-300 mb-1">
                     Server Configuration JSON:
                   </label>
                   <textarea
                     id="json-input"
                     value={jsonInput}
                     onChange={handleJsonInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm font-mono"
+                    className="w-full px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm font-mono"
                     placeholder='{ "command": "npx", "args": ["-y", "@modelcontextprotocol/server-brave-search"], "env": { "BRAVE_API_KEY": "YOUR_KEY_HERE" } }'
                     rows={8}
                   />
                   {jsonError && (
-                    <p className="mt-1 text-sm text-red-600">{jsonError}</p>
+                    <p className="mt-1 text-sm text-red-400">{jsonError}</p>
                   )}
                 </div>
               )}
               
               <button
                 type="submit"
-                className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors text-sm"
+                className="w-full py-2 bg-primary hover:bg-primary/90 text-white rounded transition-colors text-sm"
               >
                 Add Server
               </button>
@@ -658,8 +656,10 @@ function Settings() {
           </div>
 
           <div className="mt-8">
-            <h3 className="text-lg font-medium mb-2 text-gray-900 dark:text-white">Current Configuration:</h3>
-            <pre className="bg-gray-100 dark:bg-gray-700 p-4 rounded overflow-auto text-gray-900 dark:text-white">
+            <h3 className="text-lg font-medium mb-2 text-white">Current Configuration:</h3>
+            <pre 
+              className="p-4 rounded overflow-auto text-gray-300 bg-custom-dark-bg" 
+            >
               {JSON.stringify(settings, null, 2)}
             </pre>
           </div>

@@ -4,12 +4,170 @@ const fs = require('fs');
 // Import MCP client
 const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
 const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
+// Import shared models
+const { MODEL_CONTEXT_SIZES } = require('../shared/models.js');
 
 let mainWindow;
 // Store MCP client instances
 let mcpClients = {};
 // Store discovered tools
 let discoveredTools = [];
+// Variable to hold loaded model context sizes
+let modelContextSizes = {};
+
+// Determine if the app is packaged
+const isPackaged = app.isPackaged;
+
+// Helper function to get the correct base path for scripts
+function getScriptsBasePath() {
+  return isPackaged
+    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'electron', 'scripts')
+    : path.join(__dirname, 'scripts'); // Development path
+}
+
+/**
+ * Prunes message history to stay under 50% of model's context window
+ * Always keeps the first two messages (if available) and the last message
+ * Handles image filtering based on specified rules.
+ * @param {Array} messages - Complete message history
+ * @param {String} model - Selected model name
+ * @returns {Array} - Pruned message history array
+ */
+function pruneMessageHistory(messages, model) {
+  // Handle edge cases: empty array, single message, or just two messages
+  if (!messages || !Array.isArray(messages) || messages.length <= 2) {
+    return messages ? [...messages] : [];
+  }
+
+  // Get context window size for the selected model, default if unknown
+  const modelInfo = modelContextSizes[model] || modelContextSizes['default'];
+  const contextWindow = modelInfo.context;
+  const targetTokenCount = Math.floor(contextWindow * 0.5); // Use 50% of context window
+
+  // Create a copy to avoid modifying the original array
+  let prunedMessages = [...messages];
+
+  // --- Image Pruning Logic ---
+  let totalImageCount = 0;
+  let lastUserMessageWithImagesIndex = -1;
+  const userMessagesWithImagesIndices = [];
+
+  prunedMessages.forEach((msg, index) => {
+    if (msg.role === 'user' && Array.isArray(msg.content)) {
+      const imageParts = msg.content.filter(part => part.type === 'image_url');
+      if (imageParts.length > 0) {
+        totalImageCount += imageParts.length;
+        userMessagesWithImagesIndices.push(index);
+        lastUserMessageWithImagesIndex = index; // Keep track of the latest one
+      }
+    }
+  });
+
+  // If total images exceed 5, keep only images from the last user message that had them
+  if (totalImageCount > 5 && lastUserMessageWithImagesIndex !== -1) {
+    console.log(`Total image count (${totalImageCount}) exceeds 5. Keeping images only from the last user message (index ${lastUserMessageWithImagesIndex}).`);
+    prunedMessages = prunedMessages.map((msg, index) => {
+      if (msg.role === 'user' && Array.isArray(msg.content) && index !== lastUserMessageWithImagesIndex) {
+        // Filter out image_url parts from older user messages
+        const textParts = msg.content.filter(part => part.type === 'text');
+        // Calculate image parts for *this* message
+        const currentImageParts = msg.content.filter(part => part.type === 'image_url');
+
+        // If only text parts remain, keep the message, otherwise might simplify structure
+        if (textParts.length > 0) {
+            // If there was only one text part originally, simplify back to string content
+            if (textParts.length === 1 && msg.content.length === currentImageParts.length + 1) {
+                 return { ...msg, content: textParts[0].text };
+            } else {
+                 return { ...msg, content: textParts };
+            }
+        } else {
+            // If message becomes empty after removing images, consider removing it?
+            // For now, let's keep it but with potentially empty content array if no text
+             return { ...msg, content: [] }; // Or filter out this message entirely later?
+        }
+      }
+      return msg;
+    });
+  }
+  // --- End Image Pruning Logic ---
+
+  // Calculate total tokens for all messages (ignoring image tokens for now)
+  let totalTokens = prunedMessages.reduce((sum, msg) => sum + estimateTokenCount(msg), 0);
+
+  // If we're already under the target, no text-based pruning needed
+  if (totalTokens <= targetTokenCount) {
+    return prunedMessages;
+  }
+
+  // Keep track of text-based pruned messages
+  let messagesPruned = 0;
+
+  // Start pruning from index 2 (third message) and continue until we're under the target
+  // or we only have the first two and last messages left
+  while (prunedMessages.length > 3 && totalTokens > targetTokenCount) {
+    // Always preserve first two messages (indices 0 and 1) and the last message
+    // So we remove from index 2
+    const tokensForMessage = estimateTokenCount(prunedMessages[2]);
+    prunedMessages.splice(2, 1);
+    totalTokens -= tokensForMessage;
+    messagesPruned++;
+  }
+
+  if (messagesPruned > 0) {
+    console.log(`Pruned ${messagesPruned} messages based on token count to stay under ${targetTokenCount} tokens for model ${model}`);
+  }
+
+  return prunedMessages;
+}
+
+/**
+ * Estimates token count for a message (ignoring image tokens for now)
+ * @param {Object} message - Message object with role and content
+ * @returns {Number} - Estimated token count
+ */
+function estimateTokenCount(message) {
+  if (!message) return 0;
+
+  let tokenCount = 0;
+  let textContent = '';
+
+  // Handle different content structures (string or array)
+  if (typeof message.content === 'string') {
+    textContent = message.content;
+  } else if (Array.isArray(message.content)) {
+    // Sum text content length from text parts
+    textContent = message.content
+      .filter(part => part.type === 'text')
+      .map(part => part.text)
+      .join('\n'); // Join text parts for length calculation
+  }
+
+  // Use text content length divided by 4 as a rough approximation for token count
+  if (textContent) {
+    tokenCount += Math.ceil(textContent.length / 4);
+  }
+
+  // For assistant messages, also account for tool calls
+  if (message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0) {
+    // Add tokens for each tool call's serialized JSON
+    message.tool_calls.forEach(toolCall => {
+      // Serialize the tool call to estimate its token count
+      const serializedToolCall = JSON.stringify(toolCall);
+      tokenCount += Math.ceil(serializedToolCall.length / 4);
+    });
+  }
+
+  // For tool messages, estimate based on stringified content
+  if (message.role === 'tool' && message.content) {
+     const serializedContent = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
+     tokenCount += Math.ceil(serializedContent.length / 4);
+  }
+
+  // NOTE: Image token cost is currently ignored in this estimation.
+
+  return tokenCount;
+}
 
 function createWindow() {
   const { height, width } = screen.getPrimaryDisplay().workAreaSize;
@@ -58,7 +216,18 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Load model context sizes from the JS module
+  try {
+    // The require statement at the top already loaded it. Assign it here.
+    modelContextSizes = MODEL_CONTEXT_SIZES;
+    console.log('Successfully loaded shared model definitions from models.js.');
+  } catch (error) {
+    console.error('Failed to load shared model definitions from models.js:', error);
+    // Use a minimal fallback if loading fails
+    modelContextSizes = { 'default': { context: 8192, vision_supported: false } };
+  }
+
   createWindow();
   
   // Log settings path for debugging
@@ -105,6 +274,10 @@ ipcMain.handle('get-settings', async () => {
       if (!settings.mcpServers) {
         settings.mcpServers = {};
       }
+      // Add disabledMcpServers array if missing
+      if (!settings.disabledMcpServers) {
+        settings.disabledMcpServers = [];
+      }
       fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
       return settings;
     } else {
@@ -114,7 +287,8 @@ ipcMain.handle('get-settings', async () => {
         model: "llama-3.3-70b-versatile",
         temperature: 0.7,
         top_p: 0.95,
-        mcpServers: {}
+        mcpServers: {},
+        disabledMcpServers: []
       };
       fs.writeFileSync(settingsPath, JSON.stringify(defaultSettings, null, 2));
       return defaultSettings;
@@ -126,7 +300,8 @@ ipcMain.handle('get-settings', async () => {
       model: "llama-3.3-70b-versatile",
       temperature: 0.7,
       top_p: 0.95,
-      mcpServers: {}
+      mcpServers: {},
+      disabledMcpServers: []
     };
   }
 });
@@ -160,6 +335,10 @@ ipcMain.handle('reload-settings', async () => {
       // Add mcpServers configuration if missing
       if (!settings.mcpServers) {
         settings.mcpServers = {};
+      }
+      // Add disabledMcpServers array if missing
+      if (!settings.disabledMcpServers) {
+        settings.disabledMcpServers = [];
       }
       return { success: true, settings };
     } else {
@@ -200,12 +379,16 @@ ipcMain.on('chat-stream', async (event, messages, model) => {
     
     let settings = { 
       GROQ_API_KEY: "", 
-      model: "llama-3.3-70b-versatile",
+      model: "llama-3.3-70b-versatile", // Default model
       temperature: 0.7,
-      top_p: 0.95
+      top_p: 0.95,
+      mcpServers: {},
+      disabledMcpServers: []
     };
     if (fs.existsSync(settingsPath)) {
-      settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      const loadedSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      // Merge defaults with loaded settings
+      settings = { ...settings, ...loadedSettings };
     }
     
     if (!settings.GROQ_API_KEY || settings.GROQ_API_KEY === "<replace me>") {
@@ -214,7 +397,20 @@ ipcMain.on('chat-stream', async (event, messages, model) => {
     }
     
     // Use the provided model if available, otherwise use the one from settings
-    const modelToUse = model || settings.model || "llama-3.3-70b-versatile";
+    const modelToUse = model || settings.model || "llama-3.3-70b-versatile"; // Fallback needed
+    const modelInfo = modelContextSizes[modelToUse] || modelContextSizes['default'];
+
+    // Check if the model supports vision if images are present
+    const hasImages = messages.some(msg => 
+      msg.role === 'user' && 
+      Array.isArray(msg.content) && 
+      msg.content.some(part => part.type === 'image_url')
+    );
+
+    if (hasImages && !modelInfo.vision_supported) {
+       event.sender.send('chat-stream-error', { error: `The selected model (${modelToUse}) does not support image inputs. Please select a vision-capable model.` });
+       return;
+    }
     
     const Groq = require('groq-sdk');
     const groq = new Groq({ apiKey: settings.GROQ_API_KEY });
@@ -240,16 +436,48 @@ ipcMain.on('chat-stream', async (event, messages, model) => {
     const cleanedMessages = messages.map(msg => {
       // Use object destructuring to remove only the reasoning field
       const { reasoning, ...cleanMsg } = msg;
+
+      // Ensure user message content is in the correct array format if it's just text
+      if (cleanMsg.role === 'user' && typeof cleanMsg.content === 'string') {
+        return { ...cleanMsg, content: [{ type: 'text', text: cleanMsg.content }] };
+      }
+      // Ensure assistant message content is string if it was accidentally structured
+      if (cleanMsg.role === 'assistant' && Array.isArray(cleanMsg.content)) {
+         const textContent = cleanMsg.content.filter(p => p.type === 'text').map(p => p.text).join('');
+         return { ...cleanMsg, content: textContent };
+      }
+      // Ensure tool message content is stringified if not already
+       if (cleanMsg.role === 'tool' && typeof cleanMsg.content !== 'string') {
+         try {
+            return { ...cleanMsg, content: JSON.stringify(cleanMsg.content) };
+         } catch(e) {
+            console.warn("Could not stringify tool content:", cleanMsg.content);
+            return { ...cleanMsg, content: "[Error stringifying tool content]" };
+         }
+       }
+
+
       return cleanMsg;
     });
 
+    // Prune message history (includes image filtering logic)
+    const prunedMessages = pruneMessageHistory(cleanedMessages, modelToUse);
+
+    // Format messages for the API, ensuring correct structure
+    const apiMessages = prunedMessages.map(msg => {
+        // Remove isStreaming flag if present
+        const { isStreaming, ...apiMsg } = msg;
+        return apiMsg;
+    });
+
+
     const chatCompletionParams = {
-      messages: [{role: "system", content: "You are a helpful assistant that can use tools to help the user. Only use tools when asked for and only when applicable."}, ...cleanedMessages],
+      messages: [{role: "system", content: "You are a helpful assistant that can use tools to help the user. Only use tools when asked for and only when applicable. Your response is always rendered as markdown so make sure to escape any characters if necessary."}, ...apiMessages],
       model: modelToUse,
       temperature: settings.temperature,
       top_p: settings.top_p,
-      tools: tools,
-      tool_choice: "auto",
+      // Only include tools if they exist
+      ...(tools.length > 0 && { tools: tools, tool_choice: "auto" }),
       stream: true // Enable streaming
     };
 
@@ -258,107 +486,133 @@ ipcMain.on('chat-stream', async (event, messages, model) => {
       chatCompletionParams.reasoning_format = "parsed";
     }
 
-    try {
-      // Initialize stream response objects to accumulate content and tool calls
-      let accumulatedContent = "";
-      let accumulatedToolCalls = [];
-      let accumulatedReasoning = null;
-      let isFirstChunk = true;
+    // Retry logic for tool_use_failed errors
+    let retryCount = 0;
+    const MAX_TOOL_USE_RETRIES = 4;
 
-      // Create the completion with streaming
-      const stream = await groq.chat.completions.create(chatCompletionParams);
+    while (retryCount <= MAX_TOOL_USE_RETRIES) {
+      try {
+        // Initialize stream response objects to accumulate content and tool calls
+        let accumulatedContent = "";
+        let accumulatedToolCalls = [];
+        let accumulatedReasoning = null;
+        let isFirstChunk = true;
 
-      // Process each chunk as it arrives
-      for await (const chunk of stream) {
-        // Skip chunks with no delta content
-        if (!chunk.choices || !chunk.choices.length || !chunk.choices[0]) continue;
-        
-        const choice = chunk.choices[0];
-        const delta = choice.delta;
+        // Create the completion with streaming
+        const stream = await groq.chat.completions.create(chatCompletionParams);
 
-        // Extract data from the delta
-        if (isFirstChunk) {
-          // Send start message to client
-          event.sender.send('chat-stream-start', { 
-            id: chunk.id,
-            role: delta.role || "assistant" 
-          });
-          isFirstChunk = false;
-        }
+        // Process each chunk as it arrives
+        for await (const chunk of stream) {
+          // Skip chunks with no delta content
+          if (!chunk.choices || !chunk.choices.length || !chunk.choices[0]) continue;
+          
+          const choice = chunk.choices[0];
+          const delta = choice.delta;
 
-        // Accumulate content if present
-        if (delta.content) {
-          accumulatedContent += delta.content;
-          event.sender.send('chat-stream-content', { content: delta.content });
-        }
-
-        // Accumulate reasoning if present (for models that support it)
-        if (delta.reasoning) {
-          if (!accumulatedReasoning) {
-            accumulatedReasoning = delta.reasoning;
-          } else {
-            // Merge reasoning based on structure
-            if (typeof delta.reasoning === 'string') {
-              accumulatedReasoning += delta.reasoning;
-            } else if (typeof delta.reasoning === 'object') {
-              accumulatedReasoning = { ...accumulatedReasoning, ...delta.reasoning };
-            }
+          // Extract data from the delta
+          if (isFirstChunk) {
+            // Send start message to client
+            event.sender.send('chat-stream-start', { 
+              id: chunk.id,
+              role: delta.role || "assistant" 
+            });
+            isFirstChunk = false;
           }
-        }
 
-        // Handle tool calls if present
-        if (delta.tool_calls && delta.tool_calls.length > 0) {
-          // For tool calls, we need to accumulate them and send the complete call
-          // when we receive the full chunk
-          for (const toolCallDelta of delta.tool_calls) {
-            let existingCall = accumulatedToolCalls.find(tc => tc.id === toolCallDelta.id);
-            
-            if (!existingCall) {
-              // New tool call
-              accumulatedToolCalls.push({
-                id: toolCallDelta.id,
-                type: toolCallDelta.type,
-                function: {
-                  name: toolCallDelta.function?.name || "",
-                  arguments: toolCallDelta.function?.arguments || ""
-                },
-                index: toolCallDelta.index
-              });
+          // Accumulate content if present
+          if (delta.content) {
+            accumulatedContent += delta.content;
+            event.sender.send('chat-stream-content', { content: delta.content });
+          }
+
+          // Accumulate reasoning if present (for models that support it)
+          if (delta.reasoning) {
+            if (!accumulatedReasoning) {
+              accumulatedReasoning = delta.reasoning;
             } else {
-              // Update existing tool call
-              if (toolCallDelta.function) {
-                if (toolCallDelta.function.name) {
-                  existingCall.function.name = toolCallDelta.function.name;
-                }
-                if (toolCallDelta.function.arguments) {
-                  existingCall.function.arguments += toolCallDelta.function.arguments;
-                }
+              // Merge reasoning based on structure
+              if (typeof delta.reasoning === 'string') {
+                accumulatedReasoning += delta.reasoning;
+              } else if (typeof delta.reasoning === 'object') {
+                accumulatedReasoning = { ...accumulatedReasoning, ...delta.reasoning };
               }
             }
           }
-          
-          // Send tool call update (not final yet)
-          event.sender.send('chat-stream-tool-calls', { 
-            tool_calls: accumulatedToolCalls
-          });
-        }
 
-        // Check if we're done
-        if (choice.finish_reason) {
-          // Send the completion message
-          event.sender.send('chat-stream-complete', {
-            content: accumulatedContent,
-            role: "assistant",
-            tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
-            reasoning: accumulatedReasoning,
-            finish_reason: choice.finish_reason
-          });
-          break;
+          // Handle tool calls if present
+          if (delta.tool_calls && delta.tool_calls.length > 0) {
+            // For tool calls, we need to accumulate them and send the complete call
+            // when we receive the full chunk
+            for (const toolCallDelta of delta.tool_calls) {
+              let existingCall = accumulatedToolCalls.find(tc => tc.id === toolCallDelta.id);
+              
+              if (!existingCall) {
+                // New tool call
+                accumulatedToolCalls.push({
+                  id: toolCallDelta.id,
+                  type: toolCallDelta.type,
+                  function: {
+                    name: toolCallDelta.function?.name || "",
+                    arguments: toolCallDelta.function?.arguments || ""
+                  },
+                  index: toolCallDelta.index
+                });
+              } else {
+                // Update existing tool call
+                if (toolCallDelta.function) {
+                  if (toolCallDelta.function.name) {
+                    existingCall.function.name = toolCallDelta.function.name;
+                  }
+                  if (toolCallDelta.function.arguments) {
+                    existingCall.function.arguments += toolCallDelta.function.arguments;
+                  }
+                }
+              }
+            }
+            
+            // Send tool call update (not final yet)
+            event.sender.send('chat-stream-tool-calls', { 
+              tool_calls: accumulatedToolCalls
+            });
+          }
+
+          // Check if we're done
+          if (choice.finish_reason) {
+            // Send the completion message
+            event.sender.send('chat-stream-complete', {
+              content: accumulatedContent,
+              role: "assistant",
+              tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+              reasoning: accumulatedReasoning,
+              finish_reason: choice.finish_reason
+            });
+            break;
+          }
         }
+        
+        // If we get here without an error, we're done
+        return;
+        
+      } catch (error) {
+        // Check if this is a tool_use_failed error
+        const isToolUseFailedError = 
+          error?.error?.code === 'tool_use_failed' || 
+          (error?.message && error.message.includes('tool_use_failed'));
+        
+        if (isToolUseFailedError && retryCount < MAX_TOOL_USE_RETRIES) {
+          // Increment retry count
+          retryCount++;
+          console.log(`Tool use failed error, retrying (${retryCount}/${MAX_TOOL_USE_RETRIES})...`);
+          
+          // Continue to next retry iteration immediately
+          continue;
+        }
+        
+        // For other errors or if we've exhausted retries, report the error
+        console.error('Error in stream processing:', error);
+        event.sender.send('chat-stream-error', { error: error.message });
+        return;
       }
-    } catch (error) {
-      console.error('Error in stream processing:', error);
-      event.sender.send('chat-stream-error', { error: error.message });
     }
   } catch (error) {
     console.error('Error setting up chat completion stream:', error);
@@ -418,8 +672,7 @@ ipcMain.handle('execute-tool-call', async (event, toolCall) => {
   }
 });
 
-// Helper function to limit content length to 1000 characters
-function limitContentLength(content, maxLength = 1000) {
+function limitContentLength(content, maxLength = 8000) {
   if (!content) return content;
   
   if (content.length <= maxLength) return content;
@@ -438,7 +691,8 @@ function resolveCommandPath(command) {
   // Special handling for known commands
   if (command === 'npx') {
     // Use our shell script instead of direct npx
-    const npxScriptPath = path.join(__dirname, 'scripts', 'run-npx.sh');
+    const scriptBasePath = getScriptsBasePath(); // Use helper
+    const npxScriptPath = path.join(scriptBasePath, 'run-npx.sh');
     if (fs.existsSync(npxScriptPath)) {
       console.log(`Using npx script: ${npxScriptPath}`);
       return npxScriptPath;
@@ -483,14 +737,15 @@ function resolveCommandPath(command) {
   
   if (command === 'uvx') {
     // Use our shell script instead of direct uvx
-    const uvxScriptPath = path.join(__dirname, 'scripts', 'run-uvx.sh');
+    const scriptBasePath = getScriptsBasePath(); // Use helper
+    const uvxScriptPath = path.join(scriptBasePath, 'run-uvx.sh');
     if (fs.existsSync(uvxScriptPath)) {
       console.log(`Using uvx script: ${uvxScriptPath}`);
       return uvxScriptPath;
     }
     
     try {
-      // Check for uvx in homebrew location
+      // Check for uvx in common locations (fallback)
       const possibleUvxPaths = [
         '/opt/homebrew/bin/uvx',
         '/usr/local/bin/uvx',
@@ -519,6 +774,30 @@ function resolveCommandPath(command) {
       console.error('Error searching for uvx:', pathError.message);
     }
   }
+
+  if (command === 'docker') {
+    // Use our shell script instead of direct docker
+    const scriptBasePath = getScriptsBasePath(); // Use helper
+    const dockerScriptPath = path.join(scriptBasePath, 'run-docker.sh');
+    if (fs.existsSync(dockerScriptPath)) {
+      console.log(`Using docker script: ${dockerScriptPath}`);
+      return dockerScriptPath;
+    }
+    // Fallback logic (optional, could just rely on the script)
+    console.warn('run-docker.sh not found, attempting fallback...');
+  }
+
+  if (command === 'node') {
+    // Use our shell script instead of direct node
+    const scriptBasePath = getScriptsBasePath(); // Use helper
+    const nodeScriptPath = path.join(scriptBasePath, 'run-node.sh');
+    if (fs.existsSync(nodeScriptPath)) {
+      console.log(`Using node script: ${nodeScriptPath}`);
+      return nodeScriptPath;
+    }
+    // Fallback logic (optional, could just rely on the script)
+    console.warn('run-node.sh not found, attempting fallback...');
+  }
   
   // For other commands, try to use which
   try {
@@ -540,6 +819,28 @@ function resolveCommandPath(command) {
 ipcMain.handle('connect-mcp-server', async (event, serverConfig) => {
   try {
     const { id, scriptPath, command, args, env } = serverConfig;
+    
+    // Remove from disabled list if it's there
+    const userDataPath = app.getPath('userData');
+    const settingsPath = path.join(userDataPath, 'settings.json');
+    
+    if (fs.existsSync(settingsPath)) {
+      const data = fs.readFileSync(settingsPath, 'utf8');
+      const settings = JSON.parse(data);
+      
+      // Initialize the disabled list if it doesn't exist
+      if (!settings.disabledMcpServers) {
+        settings.disabledMcpServers = [];
+      }
+      
+      // Remove server ID from disabled list if it's there
+      const index = settings.disabledMcpServers.indexOf(id);
+      if (index !== -1) {
+        settings.disabledMcpServers.splice(index, 1);
+        fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+        console.log(`Removed server ${id} from disabled list`);
+      }
+    }
     
     // If command and args are provided directly, use them
     if (command) {
@@ -619,6 +920,27 @@ ipcMain.handle('connect-mcp-server', async (event, serverConfig) => {
 // Handler for disconnecting from an MCP server
 ipcMain.handle('disconnect-mcp-server', async (event, serverId) => {
   try {
+    // Add server to disabled list
+    const userDataPath = app.getPath('userData');
+    const settingsPath = path.join(userDataPath, 'settings.json');
+    
+    if (fs.existsSync(settingsPath)) {
+      const data = fs.readFileSync(settingsPath, 'utf8');
+      const settings = JSON.parse(data);
+      
+      // Initialize the disabled list if it doesn't exist
+      if (!settings.disabledMcpServers) {
+        settings.disabledMcpServers = [];
+      }
+      
+      // Add server ID to disabled list if not already there
+      if (!settings.disabledMcpServers.includes(serverId)) {
+        settings.disabledMcpServers.push(serverId);
+        fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+        console.log(`Added server ${serverId} to disabled list`);
+      }
+    }
+    
     if (mcpClients[serverId]) {
       // Clear the health check interval if it exists
       if (mcpClients[serverId].healthCheckInterval) {
@@ -668,14 +990,30 @@ async function connectConfiguredMcpServers() {
       return;
     }
     
+    // Initialize the disabled list if it doesn't exist
+    if (!settings.disabledMcpServers) {
+      settings.disabledMcpServers = [];
+    }
+    
+    const disabledServers = settings.disabledMcpServers || [];
     const serverCount = Object.keys(settings.mcpServers).length;
-    console.log(`Found ${serverCount} configured MCP servers, connecting...`);
+    const disabledCount = disabledServers.length;
+    
+    console.log(`Found ${serverCount} configured MCP servers (${disabledCount} disabled), connecting to enabled servers...`);
     
     // Track successful and failed connections
     let successCount = 0;
     let failCount = 0;
+    let skippedCount = 0;
     
     for (const [serverId, serverConfig] of Object.entries(settings.mcpServers)) {
+      // Skip servers that are in the disabled list
+      if (disabledServers.includes(serverId)) {
+        console.log(`Skipping disabled MCP server: ${serverId}`);
+        skippedCount++;
+        continue;
+      }
+      
       try {
         console.log(`Connecting to MCP server: ${serverId}`);
         
@@ -695,7 +1033,7 @@ async function connectConfiguredMcpServers() {
       }
     }
     
-    console.log(`MCP server connection summary: ${successCount} succeeded, ${failCount} failed`);
+    console.log(`MCP server connection summary: ${successCount} succeeded, ${failCount} failed, ${skippedCount} skipped (disabled)`);
   } catch (error) {
     console.error('Error connecting to configured MCP servers:', error);
   }
@@ -914,7 +1252,7 @@ function setupServerHealthCheck(client, serverId) {
     try {
       // Use a lightweight operation to check server health
       await client.listTools();
-      console.log(`Health check passed for server ${serverId}`);
+      // Only log on failure, not on success
     } catch (error) {
       console.error(`Health check failed for server ${serverId}:`, error);
       
@@ -949,4 +1287,9 @@ function setupServerHealthCheck(client, serverId) {
   
   // Store the interval so we can clear it when disconnecting
   client.healthCheckInterval = healthCheckInterval;
-} 
+}
+
+// Handler for getting model configurations
+ipcMain.handle('get-model-configs', async () => {
+  return modelContextSizes; // Return the already loaded configurations
+});

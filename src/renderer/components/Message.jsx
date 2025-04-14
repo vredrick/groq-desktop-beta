@@ -3,8 +3,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import ToolCall from './ToolCall';
 
-function Message({ message, onToolCallExecute, allMessages }) {
-  const { role, content, tool_calls, reasoning, isStreaming } = message;
+function Message({ message, children, onToolCallExecute, allMessages, isLastMessage, onRemoveMessage }) {
+  const { role, tool_calls, reasoning, isStreaming } = message;
   const [showReasoning, setShowReasoning] = useState(false);
   const isUser = role === 'user';
   const hasReasoning = reasoning && !isUser;
@@ -23,16 +23,27 @@ function Message({ message, onToolCallExecute, allMessages }) {
   };
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} relative group`}>
       <div 
         className={`rounded-lg px-4 py-2 max-w-[80%] ${
           isUser 
-            ? 'bg-primary text-white' 
+            ? 'bg-user-message-bg text-white'
             : isStreamingMessage 
-              ? 'bg-gray-200 dark:bg-gray-700 streaming-message' 
-              : 'bg-gray-200 dark:bg-gray-700'
+              ? 'streaming-message'
+              : ''
         }`}
       >
+        {isLastMessage && onRemoveMessage && (
+          <button 
+            onClick={onRemoveMessage}
+            className={`absolute ${isUser ? 'right-0 translate-x-1/2' : 'left-0 -translate-x-1/2'} top-0 -translate-y-1/2 bg-red-500 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-600 z-10 shadow-md`}
+            title="Remove message"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
         {isStreamingMessage && (
           <div className="streaming-indicator mb-1">
             <span className="dot-1"></span>
@@ -40,10 +51,8 @@ function Message({ message, onToolCallExecute, allMessages }) {
             <span className="dot-3"></span>
           </div>
         )}
-        <div className={`markdown-content ${isUser ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {content}
-          </ReactMarkdown>
+        <div className={`message-content-wrapper ${isUser ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
+          {children}
         </div>
         
         {tool_calls && tool_calls.map((toolCall, index) => (
@@ -51,7 +60,6 @@ function Message({ message, onToolCallExecute, allMessages }) {
             key={toolCall.id || index} 
             toolCall={toolCall} 
             toolResult={findToolResult(toolCall.id)}
-            onExecute={() => onToolCallExecute && onToolCallExecute(toolCall)}
           />
         ))}
 

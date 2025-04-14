@@ -8,6 +8,8 @@ module.exports = {
     extend: {
       colors: {
         primary: "#f55036",
+        'user-message-bg': '#222326',
+        'custom-dark-bg': '#121418',
       },
     },
   },

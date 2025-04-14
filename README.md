@@ -4,11 +4,8 @@ Groq Desktop features MCP server support for all function calling capable models
 
 ## Features
 
-- Chat interface with multi-line input
-- User and assistant message alternation
-- Settings page for API key configuration
-- Electron-based desktop application
-- Tailwind CSS for styling
+- Chat interface with image support
+- Local MCP servers
 
 ## Prerequisites
 

@@ -1,6 +1,4 @@
 const Groq = require('groq-sdk');
-const fs = require('fs');
-const path = require('path');
 const { pruneMessageHistory } = require('./messageUtils'); // Import pruning logic
 
 /**

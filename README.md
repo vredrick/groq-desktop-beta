@@ -1,6 +1,6 @@
 # Groq Desktop
 
-A simple Electron desktop application for chatting with Groq's AI models.
+Groq Desktop features MCP server support for all function calling capable models hosted on Groq.
 
 ## Features
 

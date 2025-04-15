@@ -24,7 +24,7 @@ function Message({ message, children, onToolCallExecute, allMessages, isLastMess
   // Apply background only for user messages
   const bubbleStyle = isUser ? 'bg-user-message-bg' : ''; // No background for assistant/system
   const bubbleClasses = `relative px-4 py-3 rounded-lg max-w-xl ${bubbleStyle} group`; // Added group for remove button
-  const wrapperClasses = `message-content-wrapper ${isUser ? 'text-white' : 'text-white'}`; // Keep text white for both
+  const wrapperClasses = `message-content-wrapper ${isUser ? 'text-white' : 'text-white'} break-all`; // Keep text white for both, use break-all
 
   const toggleReasoning = () => setShowReasoning(!showReasoning);
 

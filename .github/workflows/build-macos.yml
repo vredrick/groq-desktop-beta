@@ -14,7 +14,7 @@ jobs:
     - name: Set up pnpm
       uses: pnpm/action-setup@v4
       with:
-        version: 10 # Match the version in package.json lockfile if possible
+        version: 10.6.4 # Match the version in package.json lockfile
 
     - name: Set up Node.js
       uses: actions/setup-node@v4

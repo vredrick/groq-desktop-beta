@@ -30,7 +30,6 @@ jobs:
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
-      if: startsWith(github.ref, 'refs/tags/') # Optional: Only create releases for tags
       with:
         files: release/*.dmg # Path to the artifact to upload
         tag_name: build-${{ github.run_id }} # Creates a unique tag for each run

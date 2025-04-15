@@ -14,6 +14,9 @@ importers:
       groq-sdk:
         specifier: 0.16.0
         version: 0.16.0
+      node-fetch:
+        specifier: ^2.6.6
+        version: 2.7.0
       react:
         specifier: 19.0.0
         version: 19.0.0

@@ -126,25 +126,28 @@ function ChatInput({ onSendMessage, loading = false, visionSupported = false }) 
     <form onSubmit={handleSubmit} className="flex flex-col gap-2">
       {/* Image Previews Area */}
       {images.length > 0 && (
-        <div className="flex flex-wrap gap-2 p-2 border border-gray-200 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700">
-          {images.map((img, index) => (
-            <div key={index} className="relative group w-16 h-16">
-              <img 
-                src={img.base64} 
-                alt={`Preview ${index + 1}`} 
-                className="w-full h-full object-cover rounded-md cursor-pointer"
-                // Add onClick for larger preview later if needed
-              />
-              <button
-                type="button"
-                onClick={() => removeImage(index)}
-                className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                aria-label={`Remove image ${index + 1}`}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+        <div className="flex flex-col gap-2 mb-2">
+          <p className="text-sm font-medium text-gray-400">Attached Images ({images.length}):</p>
+          <div className="flex flex-wrap gap-2 p-2 border border-gray-600 rounded-md">
+            {images.map((img, index) => (
+              <div key={index} className="relative group w-16 h-16">
+                <img 
+                  src={img.base64} 
+                  alt={`Preview ${index + 1}`} 
+                  className="w-full h-full object-cover rounded-md cursor-pointer"
+                  // Add onClick for larger preview later if needed
+                />
+                <button
+                  type="button"
+                  onClick={() => removeImage(index)}
+                  className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                  aria-label={`Remove image ${index + 1}`}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

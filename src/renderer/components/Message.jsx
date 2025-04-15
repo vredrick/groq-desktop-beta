@@ -1,6 +1,4 @@
 import React, { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import ToolCall from './ToolCall';
 
 function Message({ message, children, onToolCallExecute, allMessages, isLastMessage, onRemoveMessage }) {
@@ -22,21 +20,21 @@ function Message({ message, children, onToolCallExecute, allMessages, isLastMess
     return toolMessage ? toolMessage.content : null;
   };
 
+  const messageClasses = `flex ${isUser ? 'justify-end' : 'justify-start'}`;
+  // Apply background only for user messages
+  const bubbleStyle = isUser ? 'bg-user-message-bg' : ''; // No background for assistant/system
+  const bubbleClasses = `relative px-4 py-3 rounded-lg max-w-xl ${bubbleStyle} group`; // Added group for remove button
+  const wrapperClasses = `message-content-wrapper ${isUser ? 'text-white' : 'text-white'}`; // Keep text white for both
+
+  const toggleReasoning = () => setShowReasoning(!showReasoning);
+
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} relative group`}>
-      <div 
-        className={`rounded-lg px-4 py-2 max-w-[80%] ${
-          isUser 
-            ? 'bg-user-message-bg text-white'
-            : isStreamingMessage 
-              ? 'streaming-message'
-              : ''
-        }`}
-      >
+    <div className={messageClasses}>
+      <div className={bubbleClasses}>
         {isLastMessage && onRemoveMessage && (
           <button 
             onClick={onRemoveMessage}
-            className={`absolute ${isUser ? 'right-0 translate-x-1/2' : 'left-0 -translate-x-1/2'} top-0 -translate-y-1/2 bg-red-500 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-600 z-10 shadow-md`}
+            className={`absolute ${isUser ? 'right-1' : 'left-1'} top-0 -translate-y-1/2 bg-red-500 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-600 z-10`}
             title="Remove message"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -51,7 +49,7 @@ function Message({ message, children, onToolCallExecute, allMessages, isLastMess
             <span className="dot-3"></span>
           </div>
         )}
-        <div className={`message-content-wrapper ${isUser ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
+        <div className={wrapperClasses}>
           {children}
         </div>
         
@@ -64,10 +62,10 @@ function Message({ message, children, onToolCallExecute, allMessages, isLastMess
         ))}
 
         {hasReasoning && (
-          <div className="mt-3 border-t border-gray-300 dark:border-gray-600 pt-2">
+          <div className="mt-3 border-t border-gray-600 pt-2">
             <button 
-              onClick={() => setShowReasoning(!showReasoning)}
-              className="flex items-center text-sm px-3 py-1 rounded-md bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors duration-200"
+              onClick={toggleReasoning}
+              className="flex items-center text-sm px-3 py-1 rounded-md bg-gray-600 hover:bg-gray-500 transition-colors duration-200"
             >
               <svg 
                 xmlns="http://www.w3.org/2000/svg" 
@@ -75,6 +73,7 @@ function Message({ message, children, onToolCallExecute, allMessages, isLastMess
                 fill="none" 
                 viewBox="0 0 24 24" 
                 stroke="currentColor"
+                strokeWidth={2}
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
@@ -82,10 +81,8 @@ function Message({ message, children, onToolCallExecute, allMessages, isLastMess
             </button>
             
             {showReasoning && (
-              <div className="mt-2 p-3 bg-gray-100 dark:bg-gray-800 rounded-md text-sm border border-gray-300 dark:border-gray-600">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {reasoning}
-                </ReactMarkdown>
+              <div className="mt-2 p-3 bg-gray-800 rounded-md text-sm border border-gray-600">
+                <pre className="whitespace-pre-wrap break-words">{reasoning}</pre>
               </div>
             )}
           </div>

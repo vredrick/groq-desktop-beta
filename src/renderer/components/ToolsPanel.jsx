@@ -108,13 +108,13 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
     .map(server => server.id);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-      <div className="bg-white dark:bg-gray-800 w-full max-w-3xl max-h-[80vh] rounded-lg shadow-lg overflow-hidden flex flex-col">
-        <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Available Tools ({tools.length})</h2>
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
+      <div className="bg-gray-800 w-full max-w-3xl max-h-[80vh] rounded-lg shadow-lg overflow-hidden flex flex-col">
+        <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+          <h2 className="text-xl font-semibold text-white">Available Tools ({tools.length})</h2>
           <button 
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            className="text-gray-400 hover:text-gray-200"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -126,17 +126,17 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
           {/* Show configured servers section */}
           {configuredServers.length > 0 && (
             <div className="mb-6">
-              <h3 className="text-md font-semibold text-gray-900 dark:text-white mb-2">Configured MCP Servers</h3>
-              <div className="border dark:border-gray-700 rounded-md overflow-hidden mb-4">
+              <h3 className="text-md font-semibold text-white mb-2">Configured MCP Servers</h3>
+              <div className="border border-gray-700 rounded-md overflow-hidden mb-4">
                 {configuredServers.map(server => (
-                  <div key={server.id} className="p-3 border-b dark:border-gray-700 last:border-b-0 bg-gray-50 dark:bg-gray-900 flex justify-between items-start">
+                  <div key={server.id} className="p-3 border-b border-gray-700 last:border-b-0 bg-gray-900 flex justify-between items-start">
                     <div>
-                      <div className="font-medium text-gray-800 dark:text-gray-300 flex items-center">
+                      <div className="font-medium text-gray-300 flex items-center">
                         {server.id}
                         <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${
                           serverStatuses[server.id] === 'connected' 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-red-100 text-red-800'
+                            ? 'bg-green-500' 
+                            : 'bg-red-500'
                         }`}>
                           {serverStatuses[server.id] === 'connected' ? 'Connected' : 'Disconnected'}
                         </span>
@@ -173,15 +173,15 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
           )}
         
           {/* Available tools section */}
-          <h3 className="text-md font-semibold text-gray-900 dark:text-white mb-2">Available Tools by Server</h3>
+          <h3 className="text-md font-semibold text-white mb-2">Available Tools by Server</h3>
           {Object.keys(toolsByServer).length === 0 ? (
-            <p className="text-gray-500 dark:text-gray-400 text-center">No tools available. All configured servers are disconnected.</p>
+            <p className="text-gray-400 text-center">No tools available. All configured servers are disconnected.</p>
           ) : (
             <div className="space-y-6">
               {Object.entries(toolsByServer).map(([serverId, serverTools]) => (
-                <div key={serverId} className="border dark:border-gray-700 rounded-lg overflow-hidden">
-                  <div className="p-3 bg-gray-200 dark:bg-gray-600 flex justify-between items-center">
-                    <h3 className="font-medium text-gray-900 dark:text-white">
+                <div key={serverId} className="border border-gray-700 rounded-lg overflow-hidden">
+                  <div className="p-3 bg-gray-600 flex justify-between items-center">
+                    <h3 className="font-medium text-white">
                       Server: {serverId} ({serverTools.length} tools)
                     </h3>
                     {serverId !== 'unknown' && (
@@ -199,34 +199,34 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
                     {serverTools.map((tool, index) => (
                       <div 
                         key={`${tool.name}-${index}`} 
-                        className="border dark:border-gray-700 rounded-lg overflow-hidden"
+                        className="border border-gray-700 rounded-lg overflow-hidden"
                       >
                         <div 
-                          className="p-3 bg-gray-100 dark:bg-gray-700 flex justify-between items-center cursor-pointer"
+                          className="p-3 bg-gray-700 flex justify-between items-center cursor-pointer"
                           onClick={() => toggleToolExpand(tool.name)}
                         >
                           <div>
-                            <h3 className="font-medium text-gray-900 dark:text-white">{tool.name}</h3>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                            <h3 className="font-medium text-white">{tool.name}</h3>
+                            <p className="text-sm text-gray-400">
                               {tool.description?.substring(0, 100)}
                               {tool.description?.length > 100 ? '...' : ''}
                             </p>
                           </div>
-                          <span className="text-gray-500">
+                          <span className="text-gray-400">
                             {expandedTools[tool.name] ? '▼' : '▶'}
                           </span>
                         </div>
                         
                         {expandedTools[tool.name] && (
-                          <div className="p-3 border-t dark:border-gray-700">
+                          <div className="p-3 border-t border-gray-700">
                             <div className="mb-2">
-                              <h4 className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-1">Full Description:</h4>
-                              <p className="text-gray-600 dark:text-gray-400 whitespace-pre-wrap">{tool.description}</p>
+                              <h4 className="font-medium text-sm text-gray-300 mb-1">Full Description:</h4>
+                              <p className="text-gray-400 whitespace-pre-wrap">{tool.description}</p>
                             </div>
                             
                             <div>
-                              <h4 className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-1">Input Schema:</h4>
-                              <pre className="bg-gray-50 dark:bg-gray-900 p-2 rounded overflow-x-auto text-xs">
+                              <h4 className="font-medium text-sm text-gray-300 mb-1">Input Schema:</h4>
+                              <pre className="bg-gray-900 p-2 rounded overflow-x-auto text-xs">
                                 {JSON.stringify(tool.input_schema, null, 2)}
                               </pre>
                             </div>
@@ -241,10 +241,10 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
           )}
         </div>
         
-        <div className="p-4 border-t dark:border-gray-700">
+        <div className="p-4 border-t border-gray-700">
           <button
             onClick={onClose}
-            className="w-full py-2 px-4 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded transition-colors"
+            className="w-full py-2 px-4 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
           >
             Close
           </button>

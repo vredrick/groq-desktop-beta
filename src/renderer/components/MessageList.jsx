@@ -40,7 +40,7 @@ function MessageList({ messages = [], onToolCallExecute, onRemoveLastMessage }) 
   const displayMessages = messages.filter(message => message.role !== 'tool');
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2 pt-4">
       {displayMessages.map((message, index) => (
         <Message 
           key={index} 
@@ -82,18 +82,6 @@ function MessageList({ messages = [], onToolCallExecute, onRemoveLastMessage }) 
                   <MarkdownRenderer content={message.content || ''} />
                 )}
               </div>
-              {/* Show remove button only for the last user message on hover */}
-              {index === displayMessages.length - 1 && showRemoveButtonIndex === index && (
-                <button
-                  className="text-red-500 hover:text-red-700 ml-auto flex-shrink-0" // Position remove button
-                  onClick={() => {
-                    setShowRemoveButtonIndex(null);
-                    onRemoveLastMessage();
-                  }}
-                >
-                  Remove
-                </button>
-              )}
             </div>
           ) : message.role === 'assistant' ? (
             <MarkdownRenderer content={message.content || ''} />

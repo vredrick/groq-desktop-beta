@@ -3,10 +3,10 @@
 @tailwind utilities;
 
 body {
-  /* @apply bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100; */
   /* Apply the new background color directly */
   /* Keep text color for dark mode */
-  @apply text-gray-100;
+  /* Ensure the base body background is dark */
+  @apply bg-gray-900 text-gray-100;
   margin: 0;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
 }
@@ -21,7 +21,8 @@ body {
   }
   
   .input {
-    @apply px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary;
+    /* Apply dark border directly */
+    @apply px-4 py-2 border border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-gray-800 text-gray-100;
   }
 
   /* Markdown styling */
@@ -29,8 +30,8 @@ body {
     @apply text-inherit;
   }
 
-  .markdown-content p {
-    @apply my-2;
+  .markdown-content p:not(:last-child) {
+    @apply mb-2;
   }
 
   .markdown-content h1 {
@@ -58,11 +59,13 @@ body {
   }
 
   .markdown-content code {
-    @apply bg-gray-300 dark:bg-gray-800 px-1 py-0.5 rounded;
+    /* Apply dark background directly */
+    @apply bg-gray-800 px-1 py-0.5 rounded;
   }
 
   .markdown-content pre {
-    @apply bg-gray-300 dark:bg-gray-800 p-3 rounded my-2 overflow-auto;
+    /* Apply dark background directly */
+    @apply bg-gray-800 p-3 rounded my-2 overflow-auto;
   }
 
   .markdown-content pre code {
@@ -84,7 +87,8 @@ body {
 
 /* Apply link styles outside the layer for higher specificity */
 .markdown-content a { 
-  @apply text-blue-600 dark:text-blue-400 underline;
+  /* Apply dark link color directly */
+  @apply text-blue-400 underline;
 }
 
 /* Add these styles at the end of index.css */
@@ -99,17 +103,19 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #444;
+  /* Apply dark color/background directly */
+  color: #e0e0e0;
+  background-color: rgba(255, 255, 255, 0.05);
   cursor: pointer;
   padding: 5px;
   border-radius: 6px;
   transition: all 0.2s ease;
-  background-color: rgba(0, 0, 0, 0.03);
 }
 
 .tools-button:hover {
-  color: #222;
-  background-color: rgba(0, 0, 0, 0.08);
+  /* Apply dark hover color/background directly */
+  color: white;
+  background-color: rgba(255, 255, 255, 0.12);
 }
 
 .status-indicator {
@@ -117,15 +123,17 @@ body {
   align-items: center;
   gap: 8px;
   font-size: 0.875rem;
-  color: #444;
+  /* Apply dark color/background directly */
+  color: #e0e0e0;
+  background-color: rgba(255, 255, 255, 0.08);
   font-weight: 500;
   padding: 4px 10px;
   border-radius: 6px;
-  background-color: rgba(0, 0, 0, 0.05);
 }
 
 .status-indicator.loading {
-  color: #3b73cc;
+  /* Apply dark color directly */
+  color: #77aaff;
   font-weight: 500;
 }
 
@@ -144,7 +152,8 @@ body {
   font-size: 16px;
   font-weight: bold;
   cursor: pointer;
-  color: #444;
+  /* Apply dark color directly */
+  color: #e0e0e0;
   transition: all 0.2s ease;
   padding: 4px;
   border-radius: 4px;
@@ -156,8 +165,9 @@ body {
 }
 
 .refresh-button:hover {
+  /* Apply dark hover color/background directly */
   color: #f55036;
-  background-color: rgba(0, 0, 0, 0.05);
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 .refresh-button span {
@@ -183,15 +193,19 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background-color: #999;
+  /* Apply dark background directly */
+  background-color: #ccc;
   opacity: 0.6;
 }
 
+/* Remove .dark specific streaming indicator styles */
+/*
 .dark .streaming-indicator .dot-1,
 .dark .streaming-indicator .dot-2,
 .dark .streaming-indicator .dot-3 {
   background-color: #ccc;
 }
+*/
 
 .streaming-indicator .dot-1 {
   animation: pulse-dot 1.4s infinite ease-in-out;
@@ -237,7 +251,8 @@ body {
 
 .reasoning-toggle {
   font-size: 0.75rem;
-  color: #666;
+  /* Apply dark color directly */
+  color: #aaa;
   background: none;
   border: none;
   text-decoration: underline;
@@ -249,83 +264,30 @@ body {
 }
 
 .reasoning-toggle:hover {
-  color: #4285f4;
-  background-color: rgba(66, 133, 244, 0.05);
+  /* Apply dark hover color/background directly */
+  color: #77aaff;
+  background-color: rgba(119, 170, 255, 0.1);
 }
 
 .reasoning-content {
   margin-top: 8px;
   padding: 8px;
-  border-top: 1px solid #ddd;
+  /* Apply dark border/background directly */
+  border-top: 1px solid #444;
+  background-color: rgba(255, 255, 255, 0.05);
   border-radius: 0 0 4px 4px;
-  background-color: rgba(0, 0, 0, 0.03);
   font-size: 0.8rem;
   white-space: pre-wrap;
 }
 
-@media (prefers-color-scheme: dark) {
-  .reasoning-toggle {
-    color: #aaa;
-  }
-  
-  .reasoning-toggle:hover {
-    color: #77aaff;
-    background-color: rgba(119, 170, 255, 0.1);
-  }
-  
-  .reasoning-content {
-    border-top-color: #444;
-    background-color: rgba(255, 255, 255, 0.05);
-  }
-  
-  .status-indicator {
-    color: #e0e0e0;
-    background-color: rgba(255, 255, 255, 0.08);
-  }
-  
-  .status-indicator.loading {
-    color: #77aaff;
-  }
-  
-  .tools-button {
-    color: #e0e0e0;
-    background-color: rgba(255, 255, 255, 0.05);
-  }
-  
-  .tools-button:hover {
-    color: white;
-    background-color: rgba(255, 255, 255, 0.12);
-  }
-  
-  select#model-select {
-    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%239CA3AF' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
-    border-color: #4b5563;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-  }
-  
-  select#model-select:focus {
-    border-color: #60a5fa;
-    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.25);
-  }
-  
-  select#model-select:hover {
-    border-color: #6b7280;
-  }
-
-  .refresh-button {
-    color: #e0e0e0;
-  }
-  
-  .refresh-button:hover {
-    color: #f55036;
-    background-color: rgba(255, 255, 255, 0.1);
-  }
-}
-
-/* Model selector styling */
+/* Model selector styling - ensure dark mode styles are applied */
 select#model-select {
   appearance: none;
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236B7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+  /* Apply dark mode styles directly */
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%239CA3AF' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+  border-color: #4b5563;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  color: #e5e7eb; /* Added dark text */
   background-position: right 0.5rem center;
   background-repeat: no-repeat;
   background-size: 1.5em 1.5em;
@@ -333,17 +295,18 @@ select#model-select {
   font-size: 0.875rem;
   font-weight: 500;
   border-radius: 0.375rem;
-  border: 1px solid #d1d5db;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  border-width: 1px; /* Ensure border width is explicitly set */
   transition: all 0.15s ease-in-out;
 }
 
 select#model-select:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+  /* Apply dark focus styles directly */
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.25);
 }
 
 select#model-select:hover {
-  border-color: #9ca3af;
+  /* Apply dark hover styles directly */
+  border-color: #6b7280;
 } 

@@ -322,6 +322,41 @@ function Settings() {
     }
   };
 
+  // Function to reset tool call approvals in localStorage
+  const handleResetToolApprovals = () => {
+    setIsSaving(true); // Use saving indicator
+    setSaveStatus({ type: 'info', message: 'Resetting approvals...' });
+
+    try {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('tool_approval_') || key === 'tool_approval_yolo_mode')) {
+          keysToRemove.push(key);
+        }
+      }
+
+      keysToRemove.forEach(key => {
+        localStorage.removeItem(key);
+        console.log(`Removed tool approval key: ${key}`);
+      });
+
+      setSaveStatus({ type: 'success', message: 'Tool call approvals reset' });
+    } catch (error) {
+      console.error('Error resetting tool approvals:', error);
+      setSaveStatus({ type: 'error', message: `Error resetting: ${error.message}` });
+    } finally {
+      setIsSaving(false);
+      // Clear status message after delay
+      if (statusTimeoutRef.current) {
+        clearTimeout(statusTimeoutRef.current);
+      }
+      statusTimeoutRef.current = setTimeout(() => {
+        setSaveStatus(null);
+      }, 2000);
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen">
       <header className="bg-user-message-bg shadow">
@@ -653,6 +688,20 @@ function Settings() {
                 Add Server
               </button>
             </form>
+          </div>
+
+          {/* Reset Tool Approvals Section */}
+          <div className="mt-8 border-t border-gray-700 pt-6">
+            <h3 className="text-lg font-medium mb-3 text-white">Tool Call Permissions</h3>
+            <p className="text-sm text-gray-400 mb-4">
+              Reset all saved permissions for tool calls. You will be prompted again the next time each tool is invoked.
+            </p>
+            <button
+              onClick={handleResetToolApprovals}
+              className="px-4 py-2 bg-yellow-700 text-gray-100 rounded hover:bg-yellow-800 focus:outline-none focus:ring-2 focus:ring-yellow-600 focus:ring-opacity-70 transition-colors"
+            >
+              Reset Tool Call Approvals
+            </button>
           </div>
 
           <div className="mt-8">

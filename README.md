@@ -1,5 +1,7 @@
 # Groq Desktop
 
+[![Latest Build](https://img.shields.io/github/v/release/groq/groq-desktop-beta?include_prereleases&label=latest%20build)](https://github.com/groq/groq-desktop-beta/releases/latest)
+
 Groq Desktop features MCP server support for all function calling capable models hosted on Groq.
 
 <img width="450" alt="Screenshot 2025-04-14 at 11 53 18 PM" src="https://github.com/user-attachments/assets/300abf8c-8b7f-4ef8-a5f9-174f93e39506" /><img width="450" alt="Screenshot 2025-04-14 at 11 53 35 PM" src="https://github.com/user-attachments/assets/61641680-5b3d-4ca9-8da4-8e84779f97bb" />

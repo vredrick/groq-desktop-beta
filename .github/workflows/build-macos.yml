@@ -28,8 +28,21 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Upload macOS Build Artifact
-      uses: actions/upload-artifact@v4
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      if: startsWith(github.ref, 'refs/tags/') # Optional: Only create releases for tags
       with:
-        name: groq-desktop-macos-build
-        path: release/*.dmg # Adjust path if your build output is different 
+        files: release/*.dmg # Path to the artifact to upload
+        tag_name: build-${{ github.run_id }} # Creates a unique tag for each run
+        name: Build ${{ github.run_id }}
+        body: "Automated build from workflow run ${{ github.run_id }}"
+        prerelease: true # Mark as pre-release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # Remove the old upload step
+    # - name: Upload macOS Build Artifact
+    #   uses: actions/upload-artifact@v4
+    #   with:
+    #     name: groq-desktop-macos-build
+    #     path: release/*.dmg # Adjust path if your build output is different 

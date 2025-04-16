@@ -104,10 +104,17 @@ async function handleChatStream(event, messages, model, settings, modelContextSi
         const prunedMessages = pruneMessageHistory(cleanedMessages, modelToUse, modelContextSizes);
         console.log(`History pruned: ${cleanedMessages.length} -> ${prunedMessages.length} messages.`);
 
+        // Construct the system prompt
+        let systemPrompt = "You are a helpful assistant capable of using tools. Use tools only when necessary and relevant to the user's request. Format responses using Markdown.";
+        if (settings.customSystemPrompt && settings.customSystemPrompt.trim()) {
+            systemPrompt += `\n\n${settings.customSystemPrompt.trim()}`;
+            console.log("Appending custom system prompt.");
+        }
+
         // Prepare API parameters
         const chatCompletionParams = {
             messages: [
-                { role: "system", content: "You are a helpful assistant capable of using tools. Use tools only when necessary and relevant to the user's request. Format responses using Markdown." },
+                { role: "system", content: systemPrompt }, // Use the constructed system prompt
                 ...prunedMessages // Use the pruned history
             ],
             model: modelToUse,

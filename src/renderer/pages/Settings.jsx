@@ -6,7 +6,8 @@ function Settings() {
     GROQ_API_KEY: '',
     temperature: 0.7,
     top_p: 0.95,
-    mcpServers: {}
+    mcpServers: {},
+    customSystemPrompt: ''
   });
   const [saveStatus, setSaveStatus] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -486,6 +487,23 @@ function Settings() {
                 Controls diversity by limiting tokens to the most likely ones.
               </p>
             </div>
+          </div>
+
+          {/* Custom System Prompt Section */}
+          <div className="mt-6 border-t border-gray-700 pt-6">
+            <h3 className="text-lg font-medium mb-3 text-white">Custom System Prompt</h3>
+            <p className="text-sm text-gray-400 mb-3">
+              Add a custom system prompt here. It will be appended to the default system prompt.
+            </p>
+            <textarea
+              id="custom-system-prompt"
+              name="customSystemPrompt"
+              value={settings.customSystemPrompt || ''}
+              onChange={handleChange}
+              rows={4}
+              className="w-full px-3 py-2 border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-transparent text-white placeholder-gray-400 text-sm"
+              placeholder="Optional: Enter your custom system prompt..."
+            />
           </div>
 
           <h3 className="text-lg font-medium mt-8 mb-3 text-white">MCP Servers</h3>

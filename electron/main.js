@@ -121,7 +121,8 @@ function loadSettings() {
         temperature: 0.7,
         top_p: 0.95,
         mcpServers: {},
-        disabledMcpServers: []
+        disabledMcpServers: [],
+        customSystemPrompt: ''
     };
 
     try {
@@ -139,6 +140,7 @@ function loadSettings() {
             settings.top_p = settings.top_p ?? defaultSettings.top_p;
             settings.mcpServers = settings.mcpServers || defaultSettings.mcpServers;
             settings.disabledMcpServers = settings.disabledMcpServers || defaultSettings.disabledMcpServers;
+            settings.customSystemPrompt = settings.customSystemPrompt || defaultSettings.customSystemPrompt;
 
             // Optional: Persist the potentially updated settings back to file if defaults were applied
             // fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));

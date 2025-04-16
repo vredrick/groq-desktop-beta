@@ -86,9 +86,14 @@ body {
 }
 
 /* Apply link styles outside the layer for higher specificity */
-.markdown-content a { 
+.markdown-content a {
   /* Apply dark link color directly */
   @apply text-blue-400 underline;
+}
+
+/* Add break-all for long links within markdown */
+.markdown-content a {
+  word-break: break-all;
 }
 
 /* Add these styles at the end of index.css */

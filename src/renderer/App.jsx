@@ -4,6 +4,7 @@ import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
 import ToolsPanel from './components/ToolsPanel';
 import ToolApprovalModal from './components/ToolApprovalModal';
+import { useChat } from './context/ChatContext'; // Import useChat hook
 // Import shared model definitions - REMOVED
 // import { MODEL_CONTEXT_SIZES } from '../../shared/models';
 
@@ -63,7 +64,8 @@ const setToolApprovalStatus = (toolName, status) => {
 
 
 function App() {
-  const [messages, setMessages] = useState([]);
+  // const [messages, setMessages] = useState([]); // Remove local state
+  const { messages, setMessages } = useChat(); // Use context state
   const [loading, setLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState('llama-3.3-70b-versatile');
   const [mcpTools, setMcpTools] = useState([]);

@@ -23,6 +23,7 @@ function Settings() {
   const [jsonError, setJsonError] = useState(null);
   const [settingsPath, setSettingsPath] = useState('');
   const [newEnvVar, setNewEnvVar] = useState({ key: '', value: '' });
+  const [editingServerId, setEditingServerId] = useState(null);
   
   const statusTimeoutRef = useRef(null);
   const saveTimeoutRef = useRef(null);
@@ -194,79 +195,131 @@ function Settings() {
     }
   };
 
-  const addMcpServer = (e) => {
+  // Helper function to parse args string into array
+  const parseArgsString = (argsStr) => {
+    if (!argsStr) return [];
+    let args = [];
+    const trimmedArgsStr = argsStr.trim();
+    let current = '';
+    let inQuotes = false;
+    let quoteChar = null;
+
+    for (let i = 0; i < trimmedArgsStr.length; i++) {
+      const char = trimmedArgsStr[i];
+
+      if ((char === '"' || char === "'") && (quoteChar === null || quoteChar === char)) {
+        if (inQuotes) {
+          // Ending quote
+          inQuotes = false;
+          quoteChar = null;
+        } else {
+          // Starting quote
+          inQuotes = true;
+          quoteChar = char;
+        }
+      } else if (char === ' ' && !inQuotes) {
+        if (current) {
+          args.push(current);
+          current = '';
+        }
+      } else {
+        current += char;
+      }
+    }
+
+    if (current) {
+      args.push(current);
+    }
+    return args;
+  };
+
+  // Switches view to Form, converting JSON state if valid
+  const switchToFormView = () => {
+    if (!useJsonInput) return; // Already in form view
+
+    try {
+      const parsedJson = JSON.parse(jsonInput || '{}');
+      if (typeof parsedJson !== 'object' || parsedJson === null) {
+        throw new Error("JSON must be an object.");
+      }
+      
+      // Basic validation (can be more robust)
+      const command = parsedJson.command || '';
+      const args = Array.isArray(parsedJson.args) ? parsedJson.args : [];
+      const env = typeof parsedJson.env === 'object' && parsedJson.env !== null ? parsedJson.env : {};
+      const argsString = args.join(' ');
+
+      setNewMcpServer(prev => ({ ...prev, command, args: argsString, env }));
+      setJsonError(null);
+      setUseJsonInput(false);
+    } catch (error) {
+      console.error("Error parsing JSON to switch to form view:", error);
+      setJsonError(`Invalid JSON: ${error.message}. Cannot switch to form view.`);
+      // Optionally keep the user in JSON view if parsing fails
+    }
+  };
+
+  // Switches view to JSON, converting form state
+  const switchToJsonView = () => {
+    if (useJsonInput) return; // Already in JSON view
+
+    try {
+      const argsArray = parseArgsString(newMcpServer.args);
+      const serverConfig = {
+        command: newMcpServer.command,
+        args: argsArray,
+        env: newMcpServer.env
+      };
+      const jsonString = JSON.stringify(serverConfig, null, 2);
+      setJsonInput(jsonString);
+      setJsonError(null); // Clear any previous JSON error
+      setUseJsonInput(true);
+    } catch (error) {
+      console.error("Error converting form state to JSON:", error);
+      // This should ideally not happen if form state is valid
+      setJsonError(`Internal error: Failed to generate JSON. ${error.message}`);
+    }
+  };
+
+  const handleSaveMcpServer = (e) => {
     e.preventDefault();
     
     let serverConfig;
-    let serverId;
     
     if (useJsonInput) {
       const parsedConfig = parseJsonInput();
       if (!parsedConfig) return;
       
-      // Extract first key as server ID if JSON is a full mcpServers object
-      const keys = Object.keys(parsedConfig);
-      if (keys.length === 0) {
-        setJsonError("Cannot determine server ID");
-        return;
-      }
-      
+      // Use the ID from the form field (which is disabled during edit)
       if (!newMcpServer.id.trim()) {
         setJsonError("Server ID is required");
         return;
       }
       
-      serverId = newMcpServer.id;
       serverConfig = parsedConfig;
     } else {
+      // Use form state
       if (!newMcpServer.id || !newMcpServer.command) {
         setSaveStatus({ type: 'error', message: 'Server ID and command are required' });
         return;
       }
       
-      serverId = newMcpServer.id;
-      
-      // Parse args into array, splitting by spaces and handling quoted sections
-      let args = [];
-      if (newMcpServer.args) {
-        // This is a simple parser that handles quoted arguments
-        const argsStr = newMcpServer.args.trim();
-        let current = '';
-        let inQuotes = false;
-        
-        for (let i = 0; i < argsStr.length; i++) {
-          const char = argsStr[i];
-          
-          if (char === '"' || char === "'") {
-            inQuotes = !inQuotes;
-          } else if (char === ' ' && !inQuotes) {
-            if (current) {
-              args.push(current);
-              current = '';
-            }
-          } else {
-            current += char;
-          }
-        }
-        
-        if (current) {
-          args.push(current);
-        }
-      }
+      // Parse args string from the form field
+      const args = parseArgsString(newMcpServer.args); 
       
       serverConfig = {
         command: newMcpServer.command,
-        args,
+        args, // Use the parsed array
         env: newMcpServer.env
       };
     }
 
-    // Update settings with new MCP server
+    // Update settings with new/updated MCP server
     const updatedSettings = {
       ...settings,
       mcpServers: {
         ...settings.mcpServers,
-        [serverId]: serverConfig
+        [newMcpServer.id]: serverConfig // Use ID from state (disabled during edit)
       }
     };
 
@@ -277,6 +330,7 @@ function Settings() {
     setNewMcpServer({ id: '', command: '', args: '', env: {} });
     setJsonInput('');
     setJsonError(null);
+    setEditingServerId(null); // Reset editing state after save
   };
 
   const removeMcpServer = (serverId) => {
@@ -290,6 +344,58 @@ function Settings() {
     
     setSettings(updatedSettings);
     saveSettings(updatedSettings);
+
+    // If the removed server was being edited, cancel the edit
+    if (editingServerId === serverId) {
+      cancelEditing();
+    }
+  };
+
+  // Function to handle starting the edit process for an MCP server
+  const startEditing = (serverId) => {
+    const serverToEdit = settings.mcpServers[serverId];
+    if (!serverToEdit) return;
+
+    setEditingServerId(serverId);
+    
+    // Check if the server config has args and env, provide defaults if not
+    const command = serverToEdit.command || '';
+    const argsArray = Array.isArray(serverToEdit.args) ? serverToEdit.args : [];
+    const envObject = typeof serverToEdit.env === 'object' && serverToEdit.env !== null ? serverToEdit.env : {};
+    const argsString = argsArray.join(' '); // For the form field
+
+    setNewMcpServer({
+      id: serverId, // Keep the original ID in the form
+      command: command,
+      args: argsString,
+      env: envObject
+    });
+
+    // Also populate the JSON input field
+    try {
+      const jsonConfig = JSON.stringify({ command, args: argsArray, env: envObject }, null, 2);
+      setJsonInput(jsonConfig);
+    } catch (error) {
+      console.error("Failed to stringify server config for JSON input:", error);
+      setJsonInput(''); // Clear if error
+    }
+
+    // If JSON input was used, populate it, otherwise ensure form input is active
+    // For simplicity, let's switch to form view when editing starts
+    setUseJsonInput(false); 
+    // setJsonInput(''); // Don't clear JSON input anymore
+    setJsonError(null);
+
+    // Optional: Scroll to the form or highlight it
+    // window.scrollTo({ top: document.getElementById('mcp-form').offsetTop, behavior: 'smooth' }); 
+  };
+
+  // Function to cancel editing
+  const cancelEditing = () => {
+    setEditingServerId(null);
+    setNewMcpServer({ id: '', command: '', args: '', env: {} }); // Reset form
+    setJsonInput('');
+    setJsonError(null);
   };
 
   // Determine what status message to show
@@ -375,24 +481,25 @@ function Settings() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto p-8 bg-custom-dark-bg">
-        <div className="max-w-2xl mx-auto bg-user-message-bg rounded-lg p-6 relative">
-          <div className="absolute top-2 right-2 min-h-6">
-            {(isSaving || saveStatus) && (
-              <div
-                className={`px-3 py-1 rounded text-sm transition-opacity duration-300 ${
-                  saveStatus?.type === 'error'
-                    ? 'bg-red-900 text-red-100'
-                    : saveStatus?.type === 'info'
-                    ? 'bg-blue-900 text-blue-100'
-                    : 'bg-green-900 text-green-100'
-                }`}
-              >
-                {getStatusMessage()}
-              </div>
-            )}
-          </div>
+      <main className="flex-1 overflow-y-auto p-8 bg-custom-dark-bg relative">
+        {/* Status Message Container - Fixed Position */} 
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 min-h-6 pointer-events-none">
+          {(isSaving || saveStatus) && (
+            <div
+              className={`px-3 py-1 rounded text-sm shadow-lg transition-opacity duration-300 pointer-events-auto ${
+                saveStatus?.type === 'error'
+                  ? 'bg-red-900 text-red-100'
+                  : saveStatus?.type === 'info'
+                  ? 'bg-blue-900 text-blue-100'
+                  : 'bg-green-900 text-green-100'
+              }`}
+            >
+              {getStatusMessage()}
+            </div>
+          )}
+        </div>
 
+        <div className="max-w-2xl mx-auto bg-user-message-bg rounded-lg p-6">
           {settingsPath && (
             <div className="mb-4 p-3 rounded text-sm bg-custom-dark-bg">
               <p className="text-gray-400">
@@ -519,34 +626,45 @@ function Settings() {
                 {Object.entries(settings.mcpServers || {}).map(([id, config]) => (
                   <div 
                     key={id} 
-                    className="p-3 border-b border-gray-700 last:border-b-0 flex justify-between items-start bg-custom-dark-bg"
+                    className="p-3 border-b border-gray-700 last:border-b-0 bg-custom-dark-bg"
                   >
-                    <div>
-                      <div className="font-medium text-gray-300">{id}</div>
-                      <div className="text-sm text-gray-500 mt-1">
-                        <div><span className="font-mono">$ {config.command} {(config.args || []).join(' ')}</span></div>
-                        {config.env && Object.keys(config.env).length > 0 && (
-                          <div className="mt-1">
-                            <span className="text-xs text-gray-400">Environment variables:</span>
-                            <div className="pl-2 mt-1">
-                              {Object.entries(config.env).map(([key, value]) => (
-                                <div key={key} className="text-xs font-mono">
-                                  <span className="text-gray-300">{key}=</span><span className="text-gray-400">
-                                    {value.length <= 8 ? value : `${value.substring(0, 4)}${'•'.repeat(value.length - 8)}${value.substring(value.length - 4)}`}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                    {/* Top row for ID and buttons */}
+                    <div className="flex justify-between items-center mb-2">
+                      <div className="font-medium text-gray-300 break-all">{id}</div>
+                      <div className="flex space-x-2 flex-shrink-0 ml-4">
+                        <button
+                          onClick={() => startEditing(id)}
+                          className="text-blue-400 hover:text-blue-300 text-sm py-1 px-2 bg-blue-900 hover:bg-blue-800 rounded"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => removeMcpServer(id)}
+                          className="text-red-400 hover:text-red-300 text-sm py-1 px-2 bg-red-900 hover:bg-red-800 rounded"
+                        >
+                          Remove
+                        </button>
                       </div>
                     </div>
-                    <button
-                      onClick={() => removeMcpServer(id)}
-                      className="text-red-400 hover:text-red-300 text-sm py-1 px-2 bg-red-900 hover:bg-red-800 rounded"
-                    >
-                      Remove
-                    </button>
+                    
+                    {/* Bottom section for command and env vars */}
+                    <div className="text-sm text-gray-500">
+                      <div><span className="font-mono break-all">$ {config.command} {(config.args || []).join(' ')}</span></div>
+                      {config.env && Object.keys(config.env).length > 0 && (
+                        <div className="mt-1">
+                          <span className="text-xs text-gray-400">Environment variables:</span>
+                          <div className="pl-2 mt-1">
+                            {Object.entries(config.env).map(([key, value]) => (
+                              <div key={key} className="text-xs font-mono break-all">
+                                <span className="text-gray-300">{key}=</span><span className="text-gray-400">
+                                  {value.length <= 8 ? value : `${value.substring(0, 4)}${'•'.repeat(value.length - 8)}${value.substring(value.length - 4)}`}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -557,30 +675,32 @@ function Settings() {
             </div>
           )}
           
-          <div className="border border-gray-700 rounded-md p-4">
-            <h4 className="font-medium text-sm text-gray-300 mb-3">Add New MCP Server:</h4>
+          <div id="mcp-form" className="border border-gray-700 rounded-md p-4">
+            <h4 className="font-medium text-sm text-gray-300 mb-3">
+              {editingServerId ? `Editing Server: ${editingServerId}` : 'Add New MCP Server:'}
+            </h4>
             
             <div className="mb-4 flex">
               <button
                 type="button"
                 className={`px-4 py-2 text-sm rounded-l ${!useJsonInput ? 'bg-primary text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-                onClick={() => setUseJsonInput(false)}
+                onClick={switchToFormView}
               >
                 Form
               </button>
               <button
                 type="button"
                 className={`px-4 py-2 text-sm rounded-r ${useJsonInput ? 'bg-primary text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-                onClick={() => setUseJsonInput(true)}
+                onClick={switchToJsonView}
               >
                 JSON
               </button>
             </div>
             
-            <form onSubmit={addMcpServer}>
+            <form onSubmit={handleSaveMcpServer}>
               <div className="mb-3">
                 <label htmlFor="server-id" className="block text-sm font-medium text-gray-300 mb-1">
-                  Server ID:
+                  Server ID: {editingServerId && "(Cannot change ID during edit)"}
                 </label>
                 <input
                   type="text"
@@ -588,9 +708,10 @@ function Settings() {
                   name="id"
                   value={newMcpServer.id}
                   onChange={handleNewMcpServerChange}
-                  className="w-full px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm"
+                  className="w-full px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm disabled:bg-gray-800 disabled:cursor-not-allowed"
                   placeholder="e.g., filesystem"
                   required
+                  disabled={!!editingServerId} // Disable ID field when editing
                 />
               </div>
               
@@ -701,12 +822,23 @@ function Settings() {
                 </div>
               )}
               
-              <button
-                type="submit"
-                className="w-full py-2 bg-primary hover:bg-primary/90 text-white rounded transition-colors text-sm"
-              >
-                Add Server
-              </button>
+              <div className="flex space-x-2 mt-4">
+                <button
+                  type="submit"
+                  className="flex-1 py-2 bg-primary hover:bg-primary/90 text-white rounded transition-colors text-sm"
+                >
+                  {editingServerId ? 'Update Server' : 'Add Server'}
+                </button>
+                {editingServerId && (
+                  <button
+                    type="button"
+                    onClick={cancelEditing}
+                    className="flex-1 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors text-sm"
+                  >
+                    Cancel Edit
+                  </button>
+                )}
+              </div>
             </form>
           </div>
 

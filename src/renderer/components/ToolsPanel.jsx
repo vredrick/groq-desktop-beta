@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import LogViewerModal from './LogViewerModal';
 
 function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer }) {
   const [expandedTools, setExpandedTools] = useState({});
   const [configuredServers, setConfiguredServers] = useState([]);
   const [serverStatuses, setServerStatuses] = useState({});
+  const [viewingLogsForServer, setViewingLogsForServer] = useState(null);
   const [actionInProgress, setActionInProgress] = useState(null);
 
   useEffect(() => {
@@ -43,11 +45,11 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown);
     
     // Clean up the event listener when the component unmounts
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, [onClose]);
 
@@ -129,7 +131,7 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
               <h3 className="text-md font-semibold text-white mb-2">Configured MCP Servers</h3>
               <div className="border border-gray-700 rounded-md overflow-hidden mb-4">
                 {configuredServers.map(server => (
-                  <div key={server.id} className="p-3 border-b border-gray-700 last:border-b-0 bg-gray-900 flex justify-between items-start">
+                  <div key={server.id} className="p-3 border-b border-gray-700 last:border-b-0 bg-gray-900 flex justify-between items-center">
                     <div>
                       <div className="font-medium text-gray-300 flex items-center">
                         {server.id}
@@ -145,23 +147,35 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
                         <div><span className="font-mono">$ {server.command} {server.args.join(' ')}</span></div>
                       </div>
                     </div>
-                    {serverStatuses[server.id] === 'connected' ? (
-                      <button
-                        onClick={() => handleDisconnect(server.id)}
-                        disabled={actionInProgress === server.id}
-                        className="text-blue-600 hover:text-blue-800 text-sm py-1 px-2 bg-blue-100 hover:bg-blue-200 rounded disabled:opacity-50"
-                      >
-                        {actionInProgress === server.id ? 'Disconnecting...' : 'Disconnect'}
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleReconnect(server.id)}
-                        disabled={actionInProgress === server.id}
-                        className="text-green-600 hover:text-green-800 text-sm py-1 px-2 bg-green-100 hover:bg-green-200 rounded disabled:opacity-50"
-                      >
-                        {actionInProgress === server.id ? 'Connecting...' : 'Reconnect'}
-                      </button>
-                    )}
+                    <div className="flex space-x-2 flex-shrink-0 ml-4">
+                      {serverStatuses[server.id] === 'connected' && (
+                        <button
+                          onClick={() => setViewingLogsForServer(server.id)}
+                          disabled={actionInProgress === server.id}
+                          className="text-gray-600 hover:text-gray-800 text-sm py-1 px-2 bg-gray-200 hover:bg-gray-300 rounded disabled:opacity-50"
+                          title="View Logs"
+                        >
+                          Logs
+                        </button>
+                      )}
+                      {serverStatuses[server.id] === 'connected' ? (
+                        <button
+                          onClick={() => handleDisconnect(server.id)}
+                          disabled={actionInProgress === server.id}
+                          className="text-red-600 hover:text-red-800 text-sm py-1 px-2 bg-red-100 hover:bg-red-200 rounded disabled:opacity-50"
+                        >
+                          {actionInProgress === server.id ? 'Disconnecting...' : 'Disconnect'}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleReconnect(server.id)}
+                          disabled={actionInProgress === server.id}
+                          className="text-green-600 hover:text-green-800 text-sm py-1 px-2 bg-green-100 hover:bg-green-200 rounded disabled:opacity-50"
+                        >
+                          {actionInProgress === server.id ? 'Connecting...' : 'Reconnect'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -184,7 +198,7 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
                     <h3 className="font-medium text-white">
                       Server: {serverId} ({serverTools.length} tools)
                     </h3>
-                    {serverId !== 'unknown' && (
+                    {serverId !== 'unknown' && serverStatuses[serverId] === 'connected' && (
                       <button
                         onClick={() => handleDisconnect(serverId)}
                         disabled={actionInProgress === serverId}
@@ -196,9 +210,9 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
                   </div>
                   
                   <div className="p-2 space-y-2">
-                    {serverTools.map((tool, index) => (
+                    {serverTools.map((tool) => (
                       <div 
-                        key={`${tool.name}-${index}`} 
+                        key={tool.name} 
                         className="border border-gray-700 rounded-lg overflow-hidden"
                       >
                         <div 
@@ -249,6 +263,14 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
             Close
           </button>
         </div>
+
+        {viewingLogsForServer && (
+          <LogViewerModal 
+            serverId={viewingLogsForServer}
+            onClose={() => setViewingLogsForServer(null)}
+          />
+        )}
+
       </div>
     </div>
   );

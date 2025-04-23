@@ -17,6 +17,9 @@ let mcpClients = {};
 let discoveredTools = [];
 // Variable to hold loaded model context sizes
 let modelContextSizes = {};
+// Store stderr logs for each server
+const mcpServerLogs = {};
+const MAX_LOG_LINES = 500; // Limit stored log lines per server
 
 // Determine if the app is packaged
 const isPackaged = app.isPackaged;
@@ -602,6 +605,13 @@ function notifyMcpServerStatus() {
   }
 }
 
+// Function to send log updates to the renderer
+function sendLogUpdate(serverId, logChunk) {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
+        mainWindow.webContents.send('mcp-log-update', { serverId, logChunk });
+    }
+}
+
 // Function to connect to an MCP server using process configuration
 async function connectMcpServerProcess(serverId, serverConfig) {
     // --- Pre-connection Cleanup ---
@@ -612,6 +622,10 @@ async function connectMcpServerProcess(serverId, serverConfig) {
         if (oldClient.healthCheckInterval) {
             clearInterval(oldClient.healthCheckInterval);
         }
+        // Stop listening to old process stderr if transport exists
+        if (oldClient.transport?.process?.stderr) {
+            oldClient.transport.process.stderr.removeAllListeners();
+        }
         try {
             await oldClient.close();
         } catch (closeError) {
@@ -620,6 +634,8 @@ async function connectMcpServerProcess(serverId, serverConfig) {
         delete mcpClients[serverId];
         // Remove potentially stale tools immediately
         discoveredTools = discoveredTools.filter(t => t.serverId !== serverId);
+        // Clear logs for the old instance
+        delete mcpServerLogs[serverId];
         // Notify UI about the cleanup phase starting
         notifyMcpServerStatus();
     }
@@ -653,16 +669,59 @@ async function connectMcpServerProcess(serverId, serverConfig) {
         command: serverConfig.command,
         args: serverConfig.args || [],
         env: { ...process.env, ...serverConfig.env }, // Merge environments
-        connectTimeout: connectTimeout
+        connectTimeout: connectTimeout,
+        stderr: 'pipe' // Explicitly pipe stderr so we can read it
     };
     const transport = new StdioClientTransport(transportOptions);
+
+    // Initialize log buffer for this server
+    mcpServerLogs[serverId] = [];
 
     // --- Connection and Initialization Logic ---
     try {
         console.log(`[${serverId}] Connecting transport...`);
         await client.connect(transport);
         mcpClients[serverId] = client; // Store client immediately after successful transport connection
-        console.log(`[${serverId}] Transport connected. Listing tools...`);
+        console.log(`[${serverId}] Transport connected. Attaching stderr listener...`);
+
+        // --- Stderr Logging & Process Exit/Error Handling (MOVED HERE) ---
+        if (transport.stderr) {
+            console.log(`[${serverId}] Attaching stderr listener.`);
+            transport.stderr.setEncoding('utf8'); // Assuming stderr is a stream
+            transport.stderr.on('data', (data) => {
+                const lines = data.toString().split('\n').filter(line => line.trim() !== '');
+                if (lines.length > 0) {
+                    // Add new lines to buffer
+                    mcpServerLogs[serverId] = [...mcpServerLogs[serverId], ...lines];
+                    // Trim buffer if it exceeds max lines
+                    if (mcpServerLogs[serverId].length > MAX_LOG_LINES) {
+                        mcpServerLogs[serverId] = mcpServerLogs[serverId].slice(-MAX_LOG_LINES);
+                    }
+                    // Send update to renderer
+                    sendLogUpdate(serverId, lines.join('\n'));
+                }
+            });
+            transport.stderr.on('error', (err) => {
+                console.error(`[${serverId}] Error reading stderr:`, err);
+                const errorLine = `[stderr error: ${err.message}]`;
+                mcpServerLogs[serverId] = [...(mcpServerLogs[serverId] || []), errorLine].slice(-MAX_LOG_LINES);
+                sendLogUpdate(serverId, errorLine);
+            });
+            transport.stderr.on('end', () => {
+                console.log(`[${serverId}] stderr stream ended.`);
+                const endLine = "[stderr stream closed]";
+                mcpServerLogs[serverId] = [...(mcpServerLogs[serverId] || []), endLine].slice(-MAX_LOG_LINES);
+                sendLogUpdate(serverId, endLine);
+            });
+        } else {
+            console.warn(`[${serverId}] Could not attach stderr listener AFTER connect: transport.stderr getter returned null.`);
+            const warnLine = "[stderr stream not available after connect]"; // Updated message
+            // Append warning instead of replacing logs
+            mcpServerLogs[serverId] = [...(mcpServerLogs[serverId] || []), warnLine].slice(-MAX_LOG_LINES);
+            sendLogUpdate(serverId, warnLine);
+        }
+
+        console.log(`[${serverId}] Listing tools...`);
 
         // --- List Tools with Timeout ---
         let toolsResult = null;
@@ -726,8 +785,15 @@ async function connectMcpServerProcess(serverId, serverConfig) {
             }
             delete mcpClients[serverId]; // Remove failed client from active list
         }
-        // Ensure tools are filtered again in case of partial failure state
+        // Cleanup listeners if transport.stderr exists
+        if (transport.stderr) {
+             console.log(`[${serverId}] Removing stderr listeners during cleanup.`);
+             transport.stderr.removeAllListeners();
+        }
+        // Ensure logs are filtered again in case of partial failure state
         discoveredTools = discoveredTools.filter(t => t.serverId !== serverId);
+        // Clear logs on failure
+        delete mcpServerLogs[serverId];
         // Notify renderer about the failure (client removed, tools removed)
         notifyMcpServerStatus();
 
@@ -792,32 +858,22 @@ function setupServerHealthCheck(client, serverId, intervalMs) {
        // For now, require manual reconnection via UI or restart.
     }
   }, intervalMs); // Use the provided interval
-
-   // Handle process exit for the client's underlying process
-    if (client.transport?.process) {
-        client.transport.process.on('exit', (code, signal) => {
-            console.warn(`[${serverId}] Underlying process exited unexpectedly with code ${code}, signal ${signal}.`);
-             // Trigger cleanup similar to health check failure
-            if (client.healthCheckInterval) {
-                clearInterval(client.healthCheckInterval);
-                client.healthCheckInterval = null;
-            }
-            if (mcpClients[serverId] === client) {
-                delete mcpClients[serverId];
-                discoveredTools = discoveredTools.filter(t => t.serverId !== serverId);
-                notifyMcpServerStatus();
-                console.log(`[${serverId}] Cleaned up client and tools due to unexpected process exit.`);
-            }
-        });
-         client.transport.process.on('error', (err) => {
-            console.error(`[${serverId}] Error from underlying process:`, err);
-             // Consider triggering cleanup here as well if the error is fatal
-        });
-    }
 }
 
 // Handler for getting model configurations
 ipcMain.handle('get-model-configs', async () => {
   // Return a copy to prevent accidental modification from renderer if needed
   return JSON.parse(JSON.stringify(modelContextSizes));
+});
+
+// Handler for getting MCP server logs
+ipcMain.handle('get-mcp-server-logs', async (event, serverId) => {
+    if (!serverId || typeof serverId !== 'string') {
+        console.error("Invalid serverId for get-mcp-server-logs:", serverId);
+        return { logs: ["[Error: Invalid Server ID provided.]"] };
+    }
+    // Return a copy of the logs or an empty array if none exist
+    const logs = mcpServerLogs[serverId] ? [...mcpServerLogs[serverId]] : [];
+    console.log(`Retrieved ${logs.length} log lines for server ${serverId}`);
+    return { logs };
 });

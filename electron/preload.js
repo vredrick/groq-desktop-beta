@@ -54,17 +54,18 @@ contextBridge.exposeInMainWorld('electron', {
   
   // Add event listener for MCP server status changes
   onMcpServerStatusChanged: (callback) => {
-    // Remove any existing listeners to avoid duplicates
-    ipcRenderer.removeAllListeners('mcp-server-status-changed');
-    
-    // Add the new listener
-    ipcRenderer.on('mcp-server-status-changed', (event, data) => {
-      callback(data);
-    });
-    
+    const listener = (event, status) => callback(status);
+    ipcRenderer.on('mcp-server-status-changed', listener);
     // Return a function to remove the listener
-    return () => {
-      ipcRenderer.removeAllListeners('mcp-server-status-changed');
-    };
+    return () => ipcRenderer.removeListener('mcp-server-status-changed', listener);
+  },
+  
+  // MCP Log Handling
+  getMcpServerLogs: (serverId) => ipcRenderer.invoke('get-mcp-server-logs', serverId),
+  onMcpLogUpdate: (callback) => {
+    const listener = (event, { serverId, logChunk }) => callback(serverId, logChunk);
+    ipcRenderer.on('mcp-log-update', listener);
+    // Return a function to remove the listener
+    return () => ipcRenderer.removeListener('mcp-log-update', listener);
   }
 }); 

@@ -92,8 +92,9 @@ jobs:
 
         # Construct the filename segment required for the download URL
         # (replace space with dot in product name, use uppercase arch)
-        PRODUCT_NAME_DOT="${{ env.PRODUCT_NAME// /'.'}}"
-        ARCH_UPPER=$(echo "${{ runner.arch }}" | tr '[:lower:]' '[:upper:]')
+        RAW_PRODUCT_NAME="${{ env.PRODUCT_NAME }}" # Get product name into shell variable
+        PRODUCT_NAME_DOT="${RAW_PRODUCT_NAME// /'.'}" # Perform bash replacement on shell variable
+        ARCH_UPPER=$(echo "${{ runner.arch }}" | tr '[:lower:]' '[:upper:]') # Use tr directly
         URL_FILENAME_SEGMENT="${PRODUCT_NAME_DOT}-${{ env.APP_VERSION }}-${ARCH_UPPER}.dmg"
         echo "Constructed URL filename segment: ${URL_FILENAME_SEGMENT}"
 

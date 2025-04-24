@@ -3,6 +3,9 @@ name: Build macOS Electron App
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**' # Ignore documentation changes if you have/create this folder
   workflow_dispatch:
 
 jobs:
@@ -31,13 +34,16 @@ jobs:
         APP_VERSION=$(node -p "require('./package.json').version")
         PRODUCT_NAME=$(node -p "require('./package.json').build.productName || require('./package.json').name")
         SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+        BUILD_TIMESTAMP=$(date +'%Y%m%d-%H%M%S') # Generate timestamp
         echo "APP_VERSION=${APP_VERSION}" >> $GITHUB_ENV
         echo "PRODUCT_NAME=${PRODUCT_NAME}" >> $GITHUB_ENV
         echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
+        echo "BUILD_TIMESTAMP=${BUILD_TIMESTAMP}" >> $GITHUB_ENV # Add timestamp to env
         # Use environment files for outputs
         echo "version=${APP_VERSION}" >> $GITHUB_OUTPUT
         echo "product_name=${PRODUCT_NAME}" >> $GITHUB_OUTPUT
         echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+        echo "build_timestamp=${BUILD_TIMESTAMP}" >> $GITHUB_OUTPUT # Output timestamp
 
     - name: Build Electron app
       run: pnpm dist # This script handles both vite build and electron build
@@ -66,9 +72,12 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         files: release/*.dmg # Broad glob to find the DMG(s)
-        tag_name: v${{ env.APP_VERSION }}-${{ env.SHORT_SHA }} # Use extracted version and short SHA for tag
-        name: Release v${{ env.APP_VERSION }} (${{ env.SHORT_SHA }}) # Include short SHA in release name
-        body: "Automated build for v${{ env.APP_VERSION }} from commit ${{ env.SHORT_SHA }}"
+        tag_name: v${{ env.APP_VERSION }}-${{ env.SHORT_SHA }} # Keep tag unique with SHA
+        name: Release v${{ env.APP_VERSION }} (${{ env.BUILD_TIMESTAMP }}) (${{ env.SHORT_SHA }}) # Use timestamp for sortable name, include SHA
+        body: |
+          Automated build for v${{ env.APP_VERSION }}.
+          Commit: ${{ github.sha }}
+          Short SHA: ${{ env.SHORT_SHA }}
         prerelease: false # Create a full release, not a pre-release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

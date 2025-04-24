@@ -11,6 +11,17 @@ Groq Desktop features MCP server support for all function calling capable models
 
 <img width="450" alt="Screenshot 2025-04-14 at 11 53 18 PM" src="https://github.com/user-attachments/assets/300abf8c-8b7f-4ef8-a5f9-174f93e39506" /><img width="450" alt="Screenshot 2025-04-14 at 11 53 35 PM" src="https://github.com/user-attachments/assets/61641680-5b3d-4ca9-8da4-8e84779f97bb" />
 
+## Unofficial Homebrew Installation (macOS)
+
+You can install the latest release using [Homebrew](https://brew.sh/) via an unofficial tap:
+
+```sh
+brew tap ricklamers/groq-desktop-unofficial
+brew install --cask groq-desktop
+# Allow the app to run
+xattr -c /Applications/Groq\ Desktop.app
+```
+
 ## Features
 
 - Chat interface with image support

@@ -82,32 +82,37 @@ jobs:
 
     - name: Update Cask File
       run: |
-        # Use the exact DMG filename found in the previous step
-        DMG_FILENAME="${{ env.DMG_FILENAME }}"
-        if [ -z "${DMG_FILENAME}" ]; then
+        # Use the exact DMG filename found locally (with dot)
+        LOCAL_DMG_FILENAME="${{ env.DMG_FILENAME }}"
+        if [ -z "${LOCAL_DMG_FILENAME}" ]; then
           echo "Error: DMG_FILENAME environment variable not set."
           exit 1
         fi
-        echo "Using discovered DMG filename: ${DMG_FILENAME}"
+        echo "Using discovered local DMG filename: ${LOCAL_DMG_FILENAME}"
 
-        # URL Encode the exact filename
-        DMG_URL_ENCODED=$(printf %s "${DMG_FILENAME}" | jq -sRr @uri)
-        DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}/${DMG_URL_ENCODED}"
+        # Construct the filename segment expected in the URL (with space)
+        # Use PRODUCT_NAME env var which has the space
+        URL_FILENAME_SEGMENT="${{ env.PRODUCT_NAME }}-${{ env.APP_VERSION }}-$(echo ${{ runner.arch }} | tr '[:upper:]' '[:lower:]').dmg"
+        echo "Constructed URL filename segment: ${URL_FILENAME_SEGMENT}"
 
-        echo "Constructed Download URL: ${DOWNLOAD_URL}"
-        echo "Looking for local DMG at: release/${DMG_FILENAME}"
+        # URL Encode the segment with the space for the download URL
+        URL_FILENAME_SEGMENT_ENCODED=$(printf %s "${URL_FILENAME_SEGMENT}" | jq -sRr @uri)
+        DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}/${URL_FILENAME_SEGMENT_ENCODED}"
 
-        # Ensure local DMG exists (using the exact filename)
-        if [ ! -f "release/${DMG_FILENAME}" ]; then
-          echo "Error: DMG file 'release/${DMG_FILENAME}' not found after build."
+        echo "Constructed Download URL for Cask: ${DOWNLOAD_URL}"
+        echo "Looking for local DMG at: release/${LOCAL_DMG_FILENAME}"
+
+        # Ensure local DMG exists (using the exact local filename with dot)
+        if [ ! -f "release/${LOCAL_DMG_FILENAME}" ]; then
+          echo "Error: DMG file 'release/${LOCAL_DMG_FILENAME}' not found after build."
           ls -l release/
           exit 1
         fi
 
-        # Calculate SHA256 from the local file (using the exact filename)
-        SHA256=$(shasum -a 256 "release/${DMG_FILENAME}" | awk '{ print $1 }')
+        # Calculate SHA256 from the local file (using the exact local filename with dot)
+        SHA256=$(shasum -a 256 "release/${LOCAL_DMG_FILENAME}" | awk '{ print $1 }')
         if [ -z "${SHA256}" ]; then
-          echo "Error: Failed to calculate SHA256 for release/${DMG_FILENAME}"
+          echo "Error: Failed to calculate SHA256 for release/${LOCAL_DMG_FILENAME}"
           exit 1
         fi
         echo "Calculated SHA256: ${SHA256}"
@@ -124,8 +129,8 @@ jobs:
         fi
 
         echo "Updating Cask File: ${CASK_FILE}"
-        # Use sed to replace placeholders - use pipe delimiter for URLs/paths
-        # Replace the entire line starting with version/sha256/url
+        # Use sed to replace the entire line
+        # Use the DOWNLOAD_URL which has the space encoded as %20
         sed -i.bak "s|^ *version .*|  version \"${{ env.APP_VERSION }}\"|" "${CASK_FILE}"
         sed -i.bak "s|^ *sha256 .*|  sha256 \"${SHA256}\"|" "${CASK_FILE}"
         sed -i.bak "s|^ *url .*|  url \"${DOWNLOAD_URL}\"|" "${CASK_FILE}"

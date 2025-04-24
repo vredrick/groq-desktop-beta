@@ -30,10 +30,13 @@ jobs:
       run: |
         APP_VERSION=$(node -p "require('./package.json').version")
         PRODUCT_NAME=$(node -p "require('./package.json').build.productName || require('./package.json').name")
+        SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
         echo "APP_VERSION=${APP_VERSION}" >> $GITHUB_ENV
         echo "PRODUCT_NAME=${PRODUCT_NAME}" >> $GITHUB_ENV
+        echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
         echo "::set-output name=version::${APP_VERSION}"
         echo "::set-output name=product_name::${PRODUCT_NAME}"
+        echo "::set-output name=short_sha::${SHORT_SHA}"
 
     - name: Build Electron app
       run: pnpm dist # This script handles both vite build and electron build
@@ -45,9 +48,9 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         files: release/${{ env.PRODUCT_NAME }}-${{ env.APP_VERSION }}-${{ runner.arch }}.dmg # Include arch in file pattern
-        tag_name: v${{ env.APP_VERSION }} # Use extracted version for tag
-        name: Release v${{ env.APP_VERSION }}
-        body: "Automated build for v${{ env.APP_VERSION }}"
+        tag_name: v${{ env.APP_VERSION }}-${{ env.SHORT_SHA }} # Use extracted version and short SHA for tag
+        name: Release v${{ env.APP_VERSION }} (${{ env.SHORT_SHA }}) # Include short SHA in release name
+        body: "Automated build for v${{ env.APP_VERSION }} from commit ${{ env.SHORT_SHA }}"
         prerelease: true # Mark as pre-release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -66,10 +69,10 @@ jobs:
         echo "Runner architecture: ${ARCH}"
 
         # Construct DMG name and URL using extracted info and arch
-        # PRODUCT_NAME and APP_VERSION are already in env from previous step
+        # PRODUCT_NAME, APP_VERSION, SHORT_SHA are already in env from previous step
         DMG_NAME="${PRODUCT_NAME}-${{ env.APP_VERSION }}-${ARCH}.dmg"
         DMG_URL_ENCODED=$(printf %s "${DMG_NAME}" | jq -sRr @uri) # URL encode the DMG name
-        DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${{ env.APP_VERSION }}/${DMG_URL_ENCODED}"
+        DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}/${DMG_URL_ENCODED}"
 
         echo "Expected DMG Filename: ${DMG_NAME}"
         echo "Constructed Download URL: ${DOWNLOAD_URL}"
@@ -124,7 +127,7 @@ jobs:
           echo "No changes detected in the cask file. Skipping commit."
         else
           echo "Changes detected. Committing and pushing cask update."
-          git commit -m "Update groq-desktop cask to v${{ env.APP_VERSION }}"
+          git commit -m "Update groq-desktop cask to v${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}"
           git push
           echo "Pushed cask update to ricklamers/homebrew-groq-desktop-unofficial."
         fi

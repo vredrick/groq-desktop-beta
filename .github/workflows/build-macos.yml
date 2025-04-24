@@ -34,9 +34,10 @@ jobs:
         echo "APP_VERSION=${APP_VERSION}" >> $GITHUB_ENV
         echo "PRODUCT_NAME=${PRODUCT_NAME}" >> $GITHUB_ENV
         echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
-        echo "::set-output name=version::${APP_VERSION}"
-        echo "::set-output name=product_name::${PRODUCT_NAME}"
-        echo "::set-output name=short_sha::${SHORT_SHA}"
+        # Use environment files for outputs
+        echo "version=${APP_VERSION}" >> $GITHUB_OUTPUT
+        echo "product_name=${PRODUCT_NAME}" >> $GITHUB_OUTPUT
+        echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
 
     - name: Build Electron app
       run: pnpm dist # This script handles both vite build and electron build
@@ -57,7 +58,8 @@ jobs:
         DMG_FILENAME=$(basename "$DMG_FILE_PATH")
         echo "Found DMG: $DMG_FILENAME"
         echo "DMG_FILENAME=${DMG_FILENAME}" >> $GITHUB_ENV
-        echo "::set-output name=dmg_filename::${DMG_FILENAME}"
+        # Use environment files for outputs
+        echo "dmg_filename=${DMG_FILENAME}" >> $GITHUB_OUTPUT
 
     - name: Create GitHub Release
       id: create_release # Add an ID to reference the release later if needed

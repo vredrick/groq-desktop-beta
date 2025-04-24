@@ -20,7 +20,8 @@ const converter = new AnsiToHtml({ newline: true, colors: {
     15: '#FFFFFF'  // bright white
 }}); // Create a converter instance
 
-function LogViewerModal({ serverId, onClose }) {
+// Custom hook for LogViewerModal to separate logic
+function useLogViewer(serverId, transportType) {
   const [logs, setLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -31,8 +32,17 @@ function LogViewerModal({ serverId, onClose }) {
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Fetch initial logs
+  // Fetch initial logs or set SSE message
   useEffect(() => {
+    if (transportType === 'sse') {
+      // For SSE, just display the info message and don't fetch
+      setLogs(["[Info: Logs for SSE servers must be checked directly on the server. Stdout/stderr is not captured.]"]);
+      setIsLoading(false);
+      setError(null);
+      return; // Skip fetching and live updates for SSE
+    }
+
+    // Proceed with fetching for stdio
     const fetchLogs = async () => {
       setIsLoading(true);
       setError(null);
@@ -54,11 +64,14 @@ function LogViewerModal({ serverId, onClose }) {
        setLogs(['[No server ID specified]']);
        setIsLoading(false);
     }
-  }, [serverId]);
+  }, [serverId, transportType]);
 
   // Subscribe to live log updates
   useEffect(() => {
-    if (!serverId) return;
+    // Only subscribe for stdio transports
+    if (!serverId || transportType === 'sse') {
+        return;
+    }
 
     const handleLogUpdate = (updatedServerId, logChunk) => {
       if (updatedServerId === serverId) {
@@ -81,12 +94,20 @@ function LogViewerModal({ serverId, onClose }) {
     return () => {
       removeListener();
     };
-  }, [serverId]);
+  }, [serverId, transportType]);
 
   // Scroll to bottom when logs update
   useEffect(() => {
     scrollToBottom();
   }, [logs]); // Trigger scroll whenever logs state changes
+
+  return { logs, isLoading, error };
+}
+
+function LogViewerModal({ serverId, transportType, onClose }) {
+  const logsEndRef = useRef(null);
+  // Pass transportType to the custom hook
+  const { logs, isLoading, error } = useLogViewer(serverId, transportType);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]"> {/* Higher z-index than ToolsPanel */}

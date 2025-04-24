@@ -57,7 +57,10 @@ async function handleChatStream(event, messages, model, settings, modelContextSi
         // 1. Remove internal fields like 'reasoning', 'isStreaming'
         // 2. Ensure correct content format (user: array, assistant: string, tool: string)
         const cleanedMessages = messages.map(msg => {
-            const { reasoning, isStreaming, ...cleanMsg } = msg;
+            // Create a clean copy, then delete unwanted properties
+            const cleanMsg = { ...msg };
+            delete cleanMsg.reasoning;
+            delete cleanMsg.isStreaming;
             let finalMsg = { ...cleanMsg };
 
             // Ensure user message content is an array of parts

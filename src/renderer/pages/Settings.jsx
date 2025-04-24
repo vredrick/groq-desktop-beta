@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 
 function Settings() {
-  const [settings, setSettings] = useState({ 
+  const [settings, setSettings] = useState({
     GROQ_API_KEY: '',
     temperature: 0.7,
     top_p: 0.95,
     mcpServers: {},
+    disabledMcpServers: [],
     customSystemPrompt: ''
   });
   const [saveStatus, setSaveStatus] = useState(null);
@@ -14,9 +15,11 @@ function Settings() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [newMcpServer, setNewMcpServer] = useState({
     id: '',
+    transport: 'stdio',
     command: '',
     args: '',
-    env: {}
+    env: {},
+    url: ''
   });
   const [useJsonInput, setUseJsonInput] = useState(false);
   const [jsonInput, setJsonInput] = useState('');
@@ -32,9 +35,21 @@ function Settings() {
     const loadSettings = async () => {
       try {
         const settingsData = await window.electron.getSettings();
+        if (!settingsData.disabledMcpServers) {
+            settingsData.disabledMcpServers = [];
+        }
         setSettings(settingsData);
       } catch (error) {
         console.error('Error loading settings:', error);
+        setSettings(prev => ({
+            ...prev,
+            GROQ_API_KEY: '',
+            temperature: 0.7,
+            top_p: 0.95,
+            mcpServers: {},
+            disabledMcpServers: [],
+            customSystemPrompt: ''
+        }));
       }
     };
 
@@ -70,7 +85,11 @@ function Settings() {
     // Debounce the actual save operation
     saveTimeoutRef.current = setTimeout(async () => {
       try {
-        const result = await window.electron.saveSettings(updatedSettings);
+        const settingsToSave = {
+            ...updatedSettings,
+            disabledMcpServers: updatedSettings.disabledMcpServers || []
+        };
+        const result = await window.electron.saveSettings(settingsToSave);
         if (result.success) {
           setSaveStatus({ type: 'success', message: 'Settings saved' });
           
@@ -110,6 +129,20 @@ function Settings() {
   const handleNewMcpServerChange = (e) => {
     const { name, value } = e.target;
     setNewMcpServer(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleTransportChange = (e) => {
+    const transportType = e.target.value;
+    setNewMcpServer(prev => ({
+        ...prev,
+        transport: transportType,
+        command: transportType === 'sse' ? '' : prev.command,
+        args: transportType === 'sse' ? '' : prev.args,
+        env: transportType === 'sse' ? {} : prev.env,
+        url: transportType === 'stdio' ? '' : prev.url
+    }));
+    setJsonInput('');
+    setJsonError(null);
   };
 
   const addEnvVar = () => {
@@ -160,34 +193,53 @@ function Settings() {
       // Create a normalized server entry
       const serverEntry = {};
       
-      if ('command' in parsedJson) {
-        serverEntry.command = parsedJson.command;
-      } else {
-        throw new Error("Server config must include 'command' field");
+      // Check for transport type in JSON (optional, default to stdio if missing)
+      const transport = parsedJson.transport === 'sse' ? 'sse' : 'stdio';
+      serverEntry.transport = transport;
+
+      if (transport === 'stdio') {
+          if ('command' in parsedJson) {
+              serverEntry.command = parsedJson.command;
+          } else {
+              throw new Error("Stdio server config must include 'command' field");
+          }
+
+          // Handle args field for stdio
+          if ('args' in parsedJson) {
+              if (Array.isArray(parsedJson.args)) {
+              serverEntry.args = parsedJson.args;
+              } else {
+              throw new Error("'args' must be an array for stdio config");
+              }
+          } else {
+              serverEntry.args = [];
+          }
+
+          // Handle env field for stdio
+          if ('env' in parsedJson) {
+              if (typeof parsedJson.env === 'object' && parsedJson.env !== null) {
+              serverEntry.env = parsedJson.env;
+              } else {
+              throw new Error("'env' must be an object for stdio config");
+              }
+          } else {
+              serverEntry.env = {};
+          }
+          // Ensure url field is not present or empty for stdio
+          serverEntry.url = '';
+
+      } else { // transport === 'sse'
+          if ('url' in parsedJson && typeof parsedJson.url === 'string' && parsedJson.url.trim() !== '') {
+              serverEntry.url = parsedJson.url;
+          } else {
+              throw new Error("SSE server config must include a non-empty 'url' field");
+          }
+           // Ensure stdio fields are not present or empty for sse
+          serverEntry.command = '';
+          serverEntry.args = [];
+          serverEntry.env = {};
       }
-      
-      // Handle args field
-      if ('args' in parsedJson) {
-        if (Array.isArray(parsedJson.args)) {
-          serverEntry.args = parsedJson.args;
-        } else {
-          throw new Error("'args' must be an array");
-        }
-      } else {
-        serverEntry.args = [];
-      }
-      
-      // Handle env field
-      if ('env' in parsedJson) {
-        if (typeof parsedJson.env === 'object' && parsedJson.env !== null) {
-          serverEntry.env = parsedJson.env;
-        } else {
-          throw new Error("'env' must be an object");
-        }
-      } else {
-        serverEntry.env = {};
-      }
-      
+
       return serverEntry;
     } catch (error) {
       setJsonError(error.message);
@@ -264,12 +316,26 @@ function Settings() {
     if (useJsonInput) return; // Already in JSON view
 
     try {
-      const argsArray = parseArgsString(newMcpServer.args);
-      const serverConfig = {
-        command: newMcpServer.command,
-        args: argsArray,
-        env: newMcpServer.env
-      };
+      let serverConfig = {};
+      if (newMcpServer.transport === 'stdio') {
+          const argsArray = parseArgsString(newMcpServer.args);
+          serverConfig = {
+              transport: 'stdio',
+              command: newMcpServer.command,
+              args: argsArray,
+              env: newMcpServer.env
+          };
+      } else { // sse
+          serverConfig = {
+              transport: 'sse',
+              url: newMcpServer.url
+          };
+          // Explicitly exclude stdio fields if they somehow exist
+          delete serverConfig.command;
+          delete serverConfig.args;
+          delete serverConfig.env;
+      }
+
       const jsonString = JSON.stringify(serverConfig, null, 2);
       setJsonInput(jsonString);
       setJsonError(null); // Clear any previous JSON error
@@ -299,19 +365,41 @@ function Settings() {
       serverConfig = parsedConfig;
     } else {
       // Use form state
-      if (!newMcpServer.id || !newMcpServer.command) {
-        setSaveStatus({ type: 'error', message: 'Server ID and command are required' });
-        return;
+      if (!newMcpServer.id) {
+          setSaveStatus({ type: 'error', message: 'Server ID is required' });
+          return;
       }
-      
-      // Parse args string from the form field
-      const args = parseArgsString(newMcpServer.args); 
-      
-      serverConfig = {
-        command: newMcpServer.command,
-        args, // Use the parsed array
-        env: newMcpServer.env
-      };
+
+      if (newMcpServer.transport === 'stdio') {
+          if (!newMcpServer.command) {
+              setSaveStatus({ type: 'error', message: 'Command is required for stdio transport' });
+              return;
+          }
+          // Parse args string from the form field
+          const args = parseArgsString(newMcpServer.args);
+          serverConfig = {
+              transport: 'stdio',
+              command: newMcpServer.command,
+              args, // Use the parsed array
+              env: newMcpServer.env
+          };
+      } else { // sse
+          if (!newMcpServer.url || !newMcpServer.url.trim()) {
+              setSaveStatus({ type: 'error', message: 'URL is required for SSE transport' });
+              return;
+          }
+          try {
+              // Basic URL validation
+              new URL(newMcpServer.url);
+          } catch (urlError) {
+              setSaveStatus({ type: 'error', message: `Invalid URL: ${urlError.message}` });
+              return;
+          }
+          serverConfig = {
+              transport: 'sse',
+              url: newMcpServer.url
+          };
+      }
     }
 
     // Update settings with new/updated MCP server
@@ -326,8 +414,8 @@ function Settings() {
     setSettings(updatedSettings);
     saveSettings(updatedSettings);
     
-    // Clear the form
-    setNewMcpServer({ id: '', command: '', args: '', env: {} });
+    // Clear the form, reset to stdio default
+    setNewMcpServer({ id: '', transport: 'stdio', command: '', args: '', env: {}, url: '' });
     setJsonInput('');
     setJsonError(null);
     setEditingServerId(null); // Reset editing state after save
@@ -358,32 +446,50 @@ function Settings() {
 
     setEditingServerId(serverId);
     
-    // Check if the server config has args and env, provide defaults if not
-    const command = serverToEdit.command || '';
-    const argsArray = Array.isArray(serverToEdit.args) ? serverToEdit.args : [];
-    const envObject = typeof serverToEdit.env === 'object' && serverToEdit.env !== null ? serverToEdit.env : {};
-    const argsString = argsArray.join(' '); // For the form field
+    // Determine transport type (default to stdio if missing)
+    const transport = serverToEdit.transport === 'sse' ? 'sse' : 'stdio';
+
+    // Populate form fields based on transport type
+    let command = '', argsArray = [], envObject = {}, argsString = '', url = '';
+    if (transport === 'stdio') {
+        command = serverToEdit.command || '';
+        argsArray = Array.isArray(serverToEdit.args) ? serverToEdit.args : [];
+        envObject = typeof serverToEdit.env === 'object' && serverToEdit.env !== null ? serverToEdit.env : {};
+        argsString = argsArray.join(' ');
+    } else { // sse
+        url = serverToEdit.url || '';
+        // Ensure stdio fields are clear
+        command = '';
+        argsString = '';
+        envObject = {};
+    }
 
     setNewMcpServer({
       id: serverId, // Keep the original ID in the form
+      transport: transport,
       command: command,
       args: argsString,
-      env: envObject
+      env: envObject,
+      url: url
     });
 
-    // Also populate the JSON input field
+    // Also populate the JSON input field based on the correct structure
     try {
-      const jsonConfig = JSON.stringify({ command, args: argsArray, env: envObject }, null, 2);
-      setJsonInput(jsonConfig);
+      let jsonConfig;
+      if (transport === 'stdio') {
+          jsonConfig = { transport: 'stdio', command, args: argsArray, env: envObject };
+      } else {
+          jsonConfig = { transport: 'sse', url };
+      }
+      const jsonString = JSON.stringify(jsonConfig, null, 2);
+      setJsonInput(jsonString);
     } catch (error) {
       console.error("Failed to stringify server config for JSON input:", error);
       setJsonInput(''); // Clear if error
     }
 
-    // If JSON input was used, populate it, otherwise ensure form input is active
-    // For simplicity, let's switch to form view when editing starts
-    setUseJsonInput(false); 
-    // setJsonInput(''); // Don't clear JSON input anymore
+    // Switch to form view when editing starts
+    setUseJsonInput(false);
     setJsonError(null);
 
     // Optional: Scroll to the form or highlight it
@@ -393,7 +499,7 @@ function Settings() {
   // Function to cancel editing
   const cancelEditing = () => {
     setEditingServerId(null);
-    setNewMcpServer({ id: '', command: '', args: '', env: {} }); // Reset form
+    setNewMcpServer({ id: '', transport: 'stdio', command: '', args: '', env: {}, url: '' }); // Reset form
     setJsonInput('');
     setJsonError(null);
   };
@@ -647,22 +753,32 @@ function Settings() {
                       </div>
                     </div>
                     
-                    {/* Bottom section for command and env vars */}
+                    {/* Bottom section for config details */}
                     <div className="text-sm text-gray-500">
-                      <div><span className="font-mono break-all">$ {config.command} {(config.args || []).join(' ')}</span></div>
-                      {config.env && Object.keys(config.env).length > 0 && (
-                        <div className="mt-1">
-                          <span className="text-xs text-gray-400">Environment variables:</span>
-                          <div className="pl-2 mt-1">
-                            {Object.entries(config.env).map(([key, value]) => (
-                              <div key={key} className="text-xs font-mono break-all">
-                                <span className="text-gray-300">{key}=</span><span className="text-gray-400">
-                                  {value.length <= 8 ? value : `${value.substring(0, 4)}${'•'.repeat(value.length - 8)}${value.substring(value.length - 4)}`}
-                                </span>
+                      {config.transport === 'sse' ? (
+                        <div><span className="font-mono break-all">Type: SSE | URL: {config.url}</span></div>
+                      ) : (
+                        <>
+                          <div><span className="font-mono break-all">Type: Stdio | $ {config.command} {(config.args || []).join(' ')}</span></div>
+                          {config.env && Object.keys(config.env).length > 0 && (
+                            <div className="mt-1">
+                              <span className="text-xs text-gray-400">Environment variables:</span>
+                              <div className="pl-2 mt-1">
+                                {Object.entries(config.env).map(([key, value]) => (
+                                  <div key={key} className="text-xs font-mono break-all">
+                                    <span className="text-gray-300">{key}=</span><span className="text-gray-400">
+                                      {/* Mask sensitive values (basic example) */}
+                                      {key.toLowerCase().includes('key') || key.toLowerCase().includes('token') || key.toLowerCase().includes('secret')
+                                        ? '********'
+                                        : (typeof value === 'string' && value.length > 30 ? `${value.substring(0, 27)}...` : value)
+                                      }
+                                    </span>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
-                          </div>
-                        </div>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -714,94 +830,139 @@ function Settings() {
                   disabled={!!editingServerId} // Disable ID field when editing
                 />
               </div>
-              
+
+              {/* Transport Selection */}
+              <div className="mb-3">
+                <label htmlFor="server-transport" className="block text-sm font-medium text-gray-300 mb-1">
+                  Transport Type:
+                </label>
+                <select
+                  id="server-transport"
+                  name="transport"
+                  value={newMcpServer.transport}
+                  onChange={handleTransportChange}
+                  disabled={useJsonInput} // Disable if using JSON input
+                  className="w-full px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-gray-800"
+                >
+                  <option value="stdio">Standard I/O (stdio)</option>
+                  <option value="sse">Server-Sent Events (SSE)</option>
+                </select>
+              </div>
+
               {!useJsonInput ? (
                 <>
-                  <div className="mb-3">
-                    <label htmlFor="server-command" className="block text-sm font-medium text-gray-300 mb-1">
-                      Command:
-                    </label>
-                    <input
-                      type="text"
-                      id="server-command"
-                      name="command"
-                      value={newMcpServer.command}
-                      onChange={handleNewMcpServerChange}
-                      className="w-full px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm"
-                      placeholder="e.g., npx"
-                      required
-                    />
-                  </div>
-                  
-                  <div className="mb-4">
-                    <label htmlFor="server-args" className="block text-sm font-medium text-gray-300 mb-1">
-                      Arguments (space separated, use quotes for args with spaces):
-                    </label>
-                    <input
-                      type="text"
-                      id="server-args"
-                      name="args"
-                      value={newMcpServer.args}
-                      onChange={handleNewMcpServerChange}
-                      className="w-full px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm"
-                      placeholder="e.g., -y @modelcontextprotocol/server-filesystem /path/to/dir"
-                    />
-                  </div>
-                  
-                  <div className="mb-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <label className="text-sm font-medium text-gray-300">
-                        Environment Variables:
-                      </label>
-                    </div>
-                    
-                    {Object.keys(newMcpServer.env).length > 0 && (
-                      <div className="mb-3 border border-gray-700 rounded-md overflow-hidden">
-                        {Object.entries(newMcpServer.env).map(([key, value]) => (
-                          <div key={key} className="flex justify-between items-center p-2 border-b border-gray-700 last:border-b-0 bg-custom-dark-bg">
-                            <div className="flex-1 font-mono text-sm">
-                              <span className="text-gray-300">{key}=</span>
-                              <span className="text-gray-400">{value}</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeEnvVar(key)}
-                              className="text-red-400 hover:text-red-300 text-xs py-1 px-2"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        ))}
+                  {/* Stdio Specific Fields */}
+                  {newMcpServer.transport === 'stdio' && (
+                    <>
+                      <div className="mb-3">
+                        <label htmlFor="server-command" className="block text-sm font-medium text-gray-300 mb-1">
+                          Command:
+                        </label>
+                        <input
+                          type="text"
+                          id="server-command"
+                          name="command"
+                          value={newMcpServer.command}
+                          onChange={handleNewMcpServerChange}
+                          className="w-full px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm"
+                          placeholder="e.g., npx"
+                          required={newMcpServer.transport === 'stdio'}
+                        />
                       </div>
-                    )}
-                    
-                    <div className="flex space-x-2">
+
+                      <div className="mb-4">
+                        <label htmlFor="server-args" className="block text-sm font-medium text-gray-300 mb-1">
+                          Arguments (space separated, use quotes for args with spaces):
+                        </label>
+                        <input
+                          type="text"
+                          id="server-args"
+                          name="args"
+                          value={newMcpServer.args}
+                          onChange={handleNewMcpServerChange}
+                          className="w-full px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm"
+                          placeholder="e.g., -y @modelcontextprotocol/server-filesystem /path/to/dir"
+                        />
+                      </div>
+
+                      <div className="mb-4">
+                        <div className="flex justify-between items-center mb-2">
+                          <label className="text-sm font-medium text-gray-300">
+                            Environment Variables:
+                          </label>
+                        </div>
+
+                        {Object.keys(newMcpServer.env).length > 0 && (
+                          <div className="mb-3 border border-gray-700 rounded-md overflow-hidden">
+                            {Object.entries(newMcpServer.env).map(([key, value]) => (
+                              <div key={key} className="flex justify-between items-center p-2 border-b border-gray-700 last:border-b-0 bg-custom-dark-bg">
+                                <div className="flex-1 font-mono text-sm">
+                                  <span className="text-gray-300">{key}=</span>
+                                  <span className="text-gray-400">{value}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeEnvVar(key)}
+                                  className="text-red-400 hover:text-red-300 text-xs py-1 px-2"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex space-x-2">
+                          <input
+                            type="text"
+                            value={newEnvVar.key}
+                            onChange={e => handleEnvVarChange(e)}
+                            name="key"
+                            placeholder="KEY"
+                            className="flex-1 px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm"
+                          />
+                          <input
+                            type="text"
+                            value={newEnvVar.value}
+                            onChange={e => handleEnvVarChange(e)}
+                            name="value"
+                            placeholder="VALUE"
+                            className="flex-1 px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={addEnvVar}
+                            disabled={!newEnvVar.key}
+                            className="px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded disabled:bg-gray-600 disabled:text-gray-400 disabled:cursor-not-allowed"
+                          >
+                            Add
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* SSE Specific Fields */}
+                  {newMcpServer.transport === 'sse' && (
+                    <div className="mb-3">
+                      <label htmlFor="server-url" className="block text-sm font-medium text-gray-300 mb-1">
+                        SSE URL:
+                      </label>
                       <input
-                        type="text"
-                        value={newEnvVar.key}
-                        onChange={e => handleEnvVarChange(e)}
-                        name="key"
-                        placeholder="KEY"
-                        className="flex-1 px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm"
+                        type="url"
+                        id="server-url"
+                        name="url"
+                        value={newMcpServer.url}
+                        onChange={handleNewMcpServerChange}
+                        className="w-full px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm"
+                        placeholder="e.g., http://localhost:8000/sse"
+                        required={newMcpServer.transport === 'sse'}
                       />
-                      <input
-                        type="text"
-                        value={newEnvVar.value}
-                        onChange={e => handleEnvVarChange(e)}
-                        name="value"
-                        placeholder="VALUE"
-                        className="flex-1 px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={addEnvVar}
-                        disabled={!newEnvVar.key}
-                        className="px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded disabled:bg-gray-600 disabled:text-gray-400 disabled:cursor-not-allowed"
-                      >
-                        Add
-                      </button>
+                       <p className="text-xs text-gray-400 mt-1">
+                        Enter the full URL for the Server-Sent Events endpoint.
+                       </p>
                     </div>
-                  </div>
+                  )}
                 </>
               ) : (
                 <div className="mb-4">
@@ -813,8 +974,8 @@ function Settings() {
                     value={jsonInput}
                     onChange={handleJsonInputChange}
                     className="w-full px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm font-mono"
-                    placeholder='{ "command": "npx", "args": ["-y", "@modelcontextprotocol/server-brave-search"], "env": { "BRAVE_API_KEY": "YOUR_KEY_HERE" } }'
-                    rows={8}
+                    placeholder={`{\n  "transport": "stdio",\n  "command": "npx",\n  "args": ["-y", "..."],\n  "env": { ... }\n}\n\n// OR\n\n{\n  "transport": "sse",\n  "url": "http://localhost:8000/sse"\n}`}
+                    rows={10}
                   />
                   {jsonError && (
                     <p className="mt-1 text-sm text-red-400">{jsonError}</p>

@@ -13,11 +13,18 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
       try {
         const settings = await window.electron.getSettings();
         if (settings && settings.mcpServers) {
-          const servers = Object.entries(settings.mcpServers).map(([id, config]) => ({
-            id,
-            command: config.command,
-            args: config.args || []
-          }));
+          const servers = Object.entries(settings.mcpServers).map(([id, config]) => {
+            // Determine transport type (default to stdio if missing)
+            const transportType = config.transport === 'sse' ? 'sse' : 'stdio';
+            return {
+              id,
+              // Include relevant fields based on transport type for display?
+              command: transportType === 'stdio' ? config.command : undefined,
+              args: transportType === 'stdio' ? (config.args || []) : [],
+              url: transportType === 'sse' ? config.url : undefined,
+              transport: transportType // Store the transport type
+            };
+          });
           setConfiguredServers(servers);
 
           // Determine which servers are currently connected
@@ -144,13 +151,17 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
                         </span>
                       </div>
                       <div className="text-sm text-gray-500 mt-1">
-                        <div><span className="font-mono">$ {server.command} {server.args.join(' ')}</span></div>
+                        {server.transport === 'sse' ? (
+                          <div><span className="font-mono">Type: SSE | URL: {server.url || 'N/A'}</span></div>
+                        ) : (
+                          <div><span className="font-mono">Type: Stdio | $ {server.command || 'N/A'} {server.args.join(' ')}</span></div>
+                        )}
                       </div>
                     </div>
                     <div className="flex space-x-2 flex-shrink-0 ml-4">
                       {serverStatuses[server.id] === 'connected' && (
                         <button
-                          onClick={() => setViewingLogsForServer(server.id)}
+                          onClick={() => setViewingLogsForServer({ id: server.id, transport: server.transport })}
                           disabled={actionInProgress === server.id}
                           className="text-gray-600 hover:text-gray-800 text-sm py-1 px-2 bg-gray-200 hover:bg-gray-300 rounded disabled:opacity-50"
                           title="View Logs"
@@ -266,7 +277,8 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
 
         {viewingLogsForServer && (
           <LogViewerModal 
-            serverId={viewingLogsForServer}
+            serverId={viewingLogsForServer.id} 
+            transportType={viewingLogsForServer.transport}
             onClose={() => setViewingLogsForServer(null)}
           />
         )}

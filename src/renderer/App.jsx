@@ -755,12 +755,13 @@ function App() {
         return false;
       }
       
+      // Get the full configuration object for the server
+      const serverConfig = settings.mcpServers[serverId];
+
       // Connect to the server
       const result = await window.electron.connectMcpServer({
-        id: serverId,
-        command: settings.mcpServers[serverId].command,
-        args: settings.mcpServers[serverId].args || [],
-        env: settings.mcpServers[serverId].env || {}
+        ...serverConfig, // Spread the loaded config (includes transport, url/command, args, env)
+        id: serverId      // Ensure ID is explicitly included
       });
       
       if (result && result.success) {

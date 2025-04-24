@@ -291,7 +291,15 @@ function resolveCommandPath(command) {
     },
     // Commands that might benefit from a wrapper script but don't have common known paths listed here
     'docker': { scriptName: 'run-docker.sh' },
-    'node': { scriptName: 'run-node.sh' }
+    'node': { scriptName: 'run-node.sh' },
+    'deno': { 
+      scriptName: 'run-deno.sh',
+      knownPaths: [
+        `${process.env.HOME}/.deno/bin/deno`, // Default Deno install path
+        '/opt/homebrew/bin/deno', // Common Homebrew path (Apple Silicon)
+        '/usr/local/bin/deno'    // Common Homebrew/manual install path
+      ]
+    }
     // Add other commands as needed
   };
 

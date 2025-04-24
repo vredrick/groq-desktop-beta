@@ -5,6 +5,7 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
   const [expandedTools, setExpandedTools] = useState({});
   const [configuredServers, setConfiguredServers] = useState([]);
   const [serverStatuses, setServerStatuses] = useState({});
+  const [authRequiredServers, setAuthRequiredServers] = useState({});
   const [viewingLogsForServer, setViewingLogsForServer] = useState(null);
   const [actionInProgress, setActionInProgress] = useState(null);
 
@@ -43,6 +44,36 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
     
     loadConfiguredServers();
   }, [tools]);
+
+  // Listener for auth reconnect completion events from main process
+  useEffect(() => {
+    const removeListener = window.electron.onMcpAuthReconnectComplete?.((data) => {
+      console.log('Received mcp-auth-reconnect-complete:', data);
+      // Clear the action in progress only if it matches the completed server
+      if (data && actionInProgress === data.serverId) {
+        setActionInProgress(null);
+        if (!data.success) {
+             // Optionally show an error toast if reconnect failed after auth
+             console.error(`Auth reconnect failed for ${data.serverId}: ${data.error}`);
+             // Keep server disconnected, potentially reset authRequired flag?
+             // setAuthRequiredServers(prev => ({ ...prev, [data.serverId]: true }));
+        } else {
+            // Success state is handled by the main status update driven by notifyMcpServerStatus
+            // but we should clear the authRequired flag here
+            setAuthRequiredServers(prev => {
+                 const newState = { ...prev };
+                 delete newState[data.serverId];
+                 return newState;
+            });
+        }
+      }
+    });
+
+    // Cleanup listener on unmount
+    return () => {
+      if (removeListener) removeListener();
+    };
+  }, [actionInProgress]); // Depend on actionInProgress to ensure correct serverId check
 
   // Add event listener for ESC key
   useEffect(() => {
@@ -88,16 +119,52 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
     
     setActionInProgress(serverId);
     try {
-      const success = await onReconnectServer(serverId);
-      if (success) {
+      const result = await onReconnectServer(serverId);
+
+      if (result && result.requiresAuth) {
+        console.warn(`Authorization required for server ${serverId}.`);
+        setAuthRequiredServers(prev => ({ ...prev, [serverId]: true }));
+        setServerStatuses(prev => ({ ...prev, [serverId]: 'disconnected' })); // Keep disconnected
+        // Optionally: show a toast/notification to the user
+      } else if (result && result.success) {
+        console.log(`Successfully reconnected to server ${serverId}.`);
+        setAuthRequiredServers(prev => {
+          const newState = { ...prev };
+          delete newState[serverId];
+          return newState;
+        });
         setServerStatuses(prev => ({ ...prev, [serverId]: 'connected' }));
       } else {
-        console.error(`Failed to reconnect to server ${serverId}`);
+        // Handle explicit failure or unexpected result structure
+        console.error(`Failed to reconnect to server ${serverId}:`, result?.error || 'Unknown reason');
+        setServerStatuses(prev => ({ ...prev, [serverId]: 'disconnected' })); // Ensure disconnected
       }
     } catch (error) {
-      console.error(`Error reconnecting to server ${serverId}:`, error);
+      console.error(`Error during reconnect handler for ${serverId}:`, error);
+      setServerStatuses(prev => ({ ...prev, [serverId]: 'disconnected' })); // Ensure disconnected on catch
     } finally {
       setActionInProgress(null);
+    }
+  };
+
+  const handleAuthorizeServer = async (serverId) => {
+    const server = configuredServers.find(s => s.id === serverId);
+    if (!server || server.transport !== 'sse' || !server.url) { // Only allow for SSE with URL
+        console.error("Cannot start auth flow: server config is not SSE or URL missing for", serverId);
+        // Show error message to user?
+        return;
+    }
+    console.log(`Starting authorization flow for server ${serverId} at ${server.url}...`);
+    setActionInProgress(serverId); // Show loading/indicator on the button
+    try {
+        // Send IPC message to main process
+        await window.electron.startMcpAuthFlow({ serverId: server.id, serverUrl: server.url });
+        console.log(`Authorization flow initiated for ${serverId}. Please follow browser instructions.`);
+        // Keep actionInProgress until user tries to reconnect or main process sends completion signal
+    } catch (error) {
+        console.error(`Error initiating auth flow for ${serverId}:`, error);
+        // Show error message to user?
+        setActionInProgress(null);
     }
   };
 
@@ -178,13 +245,23 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
                           {actionInProgress === server.id ? 'Disconnecting...' : 'Disconnect'}
                         </button>
                       ) : (
-                        <button
-                          onClick={() => handleReconnect(server.id)}
-                          disabled={actionInProgress === server.id}
-                          className="text-green-600 hover:text-green-800 text-sm py-1 px-2 bg-green-100 hover:bg-green-200 rounded disabled:opacity-50"
-                        >
-                          {actionInProgress === server.id ? 'Connecting...' : 'Reconnect'}
-                        </button>
+                        authRequiredServers[server.id] ? (
+                          <button
+                            onClick={() => handleAuthorizeServer(server.id)}
+                            disabled={actionInProgress === server.id}
+                            className="text-yellow-600 hover:text-yellow-800 text-sm py-1 px-2 bg-yellow-100 hover:bg-yellow-200 rounded disabled:opacity-50"
+                          >
+                            {actionInProgress === server.id ? 'Authorizing...' : 'Authorize'}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleReconnect(server.id)}
+                            disabled={actionInProgress === server.id}
+                            className="text-green-600 hover:text-green-800 text-sm py-1 px-2 bg-green-100 hover:bg-green-200 rounded disabled:opacity-50"
+                          >
+                            {actionInProgress === server.id ? 'Connecting...' : 'Reconnect'}
+                          </button>
+                        )
                       )}
                     </div>
                   </div>

@@ -67,5 +67,15 @@ contextBridge.exposeInMainWorld('electron', {
     ipcRenderer.on('mcp-log-update', listener);
     // Return a function to remove the listener
     return () => ipcRenderer.removeListener('mcp-log-update', listener);
-  }
+  },
+
+  // Auth
+  startMcpAuthFlow: (authParams) => ipcRenderer.invoke('start-mcp-auth-flow', authParams),
+  onMcpAuthReconnectComplete: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('mcp-auth-reconnect-complete', listener);
+    return () => ipcRenderer.removeListener('mcp-auth-reconnect-complete', listener);
+  },
+
+  // Other?
 }); 

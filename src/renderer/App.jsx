@@ -763,25 +763,29 @@ function App() {
         ...serverConfig, // Spread the loaded config (includes transport, url/command, args, env)
         id: serverId      // Ensure ID is explicitly included
       });
-      
+
+      // --- Update tools state ONLY on success ---
       if (result && result.success) {
-        // Make sure allTools exists before updating state
+        // Update tools based on the result
         if (result.allTools) {
           setMcpTools(result.allTools);
         } else if (result.tools) {
-          // If allTools is missing but we have tools, use those
+          // Fallback logic if allTools isn't provided but tools is
           setMcpTools(prev => {
-            // Filter out tools from the same serverId and add new ones
             const filteredTools = prev.filter(tool => tool.serverId !== serverId);
             return [...filteredTools, ...(result.tools || [])];
           });
         }
-        return true;
+        // Do NOT return true here, let the full result propagate
       }
-      return false;
+
+      // Return the result object regardless of success/failure/requiresAuth
+      // ToolsPanel will handle the requiresAuth flag
+      return result;
     } catch (error) {
       console.error('Error reconnecting to MCP server:', error);
-      return false;
+      // Return an error structure consistent with what ToolsPanel might expect
+      return { success: false, error: error.message || 'An unknown error occurred', requiresAuth: false }; 
     }
   };
 

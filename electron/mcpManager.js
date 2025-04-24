@@ -4,6 +4,15 @@ const { URL } = require('url'); // Import URL
 const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
 const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
 const { SSEClientTransport } = require('@modelcontextprotocol/sdk/client/sse.js');
+const { getTokensForServer, getClientInfoForServer } = require('./authManager');
+
+// Custom Error for Auth Requirement
+class AuthorizationRequiredError extends Error {
+  constructor(message = "Authorization required for this server") {
+    super(message);
+    this.name = "AuthorizationRequiredError";
+  }
+}
 
 // State variables managed by this module
 let mcpClients = {};
@@ -17,6 +26,9 @@ let appInstance;
 let mainWindowInstance;
 let loadSettingsFunc;
 let resolveCommandPathFunc;
+
+// Store original connection details temporarily when auth is required
+const pendingAuthConnections = {};
 
 // Notify renderer process about MCP server status changes
 function notifyMcpServerStatus() {
@@ -95,8 +107,27 @@ function setupServerHealthCheck(client, serverId, intervalMs) {
   }, intervalMs);
 }
 
-// Function to connect to an MCP server using process configuration
-async function connectMcpServerProcess(serverId, connectionDetails) {
+// --- Static Auth Provider (for retry) ---
+class StaticAuthProvider {
+    constructor(tokens, clientInfo) {
+        this._tokens = tokens;
+        this._clientInfo = clientInfo;
+    }
+    // Methods needed by SSEClientTransport's internal _commonHeaders & potentially auth flow
+    async tokens() { return this._tokens; }
+    async clientInformation() { return this._clientInfo; }
+    // Dummy implementations for other provider methods (might not be called)
+    get redirectUrl() { return 'http://127.0.0.1/callback-dummy'; }
+    get clientMetadata() { return { client_name: 'Groq Desktop (Static)', redirect_uris: [this.redirectUrl] }; }
+    async saveClientInformation(_info) { console.warn("StaticAuthProvider saveClientInformation called unexpectedly"); }
+    async saveTokens(_tokens) { console.warn("StaticAuthProvider saveTokens called unexpectedly"); }
+    async redirectToAuthorization(_url) { console.warn("StaticAuthProvider redirectToAuthorization called unexpectedly"); }
+    async saveCodeVerifier(_verifier) { console.warn("StaticAuthProvider saveCodeVerifier called unexpectedly"); }
+    async codeVerifier() { console.warn("StaticAuthProvider codeVerifier called unexpectedly"); return "dummy"; }
+}
+
+// --- connectMcpServerProcess (Refactored) ---
+async function connectMcpServerProcess(serverId, connectionDetails, authProviderInstance = null) {
     // --- Pre-connection Cleanup ---
     if (mcpClients[serverId]) {
         console.log(`[${serverId}] Cleaning up existing client/connection before new attempt.`);
@@ -128,15 +159,29 @@ async function connectMcpServerProcess(serverId, connectionDetails) {
     const listToolsTimeout = 15000;
     const healthCheckIntervalMs = 60000;
 
-    console.log(`Attempting ${transportType.toUpperCase()} connection to ${serverId}${transportType === 'stdio' ? ` cmd: ${connectionDetails.command}` : ` url: ${connectionDetails.url}`} (Conn T/O: ${connectTimeout}ms)`);
+    console.log(`Attempting ${transportType.toUpperCase()} connection to ${serverId}... ${authProviderInstance ? '(with auth provider)' : '(without auth provider)'}`);
+
+    // Store connection details ONLY on initial SSE attempt without provider
+    if (!authProviderInstance && transportType === 'sse') {
+        pendingAuthConnections[serverId] = { ...connectionDetails };
+    }
 
     // --- Create Client and Transport ---
     const client = new Client({ name: "groq-desktop", version: appInstance.getVersion(), capabilities: { tools: true } });
     let transport;
+    mcpServerLogs[serverId] = [];
+
     try {
+        // --- Transport Creation ---
         if (transportType === 'sse') {
             const sseUrl = new URL(connectionDetails.url);
-            transport = new SSEClientTransport(sseUrl, {});
+            console.log(`Creating SSEClientTransport for ${sseUrl.toString()}`);
+            // Pass the authProvider directly if provided (during retry)
+            // Omit requestInit/eventSourceInit with headers
+            transport = new SSEClientTransport(sseUrl, {
+                authProvider: authProviderInstance // Pass the static provider here
+            });
+
         } else { // stdio
             // Construct the PATH needed by the script
             const requiredPaths = [
@@ -178,13 +223,11 @@ async function connectMcpServerProcess(serverId, connectionDetails) {
          throw transportError;
     }
 
-    mcpServerLogs[serverId] = []; // Initialize log buffer
-
     // --- Connection and Initialization Logic ---
     try {
         console.log(`[${serverId}] Connecting transport...`);
         await client.connect(transport);
-        mcpClients[serverId] = client; // Store client
+        mcpClients[serverId] = client;
         console.log(`[${serverId}] Transport connected.`);
 
         // --- Stderr Logging & Process Exit/Error Handling ---
@@ -212,7 +255,7 @@ async function connectMcpServerProcess(serverId, connectionDetails) {
                  // Remove listeners on end to prevent leaks if process lingers?
                 transport.stderr?.removeListener('data', handleStderrData);
                 transport.stderr?.removeListener('error', handleStderrError);
-                transport.stderr?.removeListener('end', handleStderrEnd);
+                transport.stderr.on('end', handleStderrEnd);
             };
             transport.stderr.on('data', handleStderrData);
             transport.stderr.on('error', handleStderrError);
@@ -246,27 +289,53 @@ async function connectMcpServerProcess(serverId, connectionDetails) {
         }
 
         // --- Update Global State and Notify ---
-        discoveredTools = [...discoveredTools, ...serverTools];
+        const existingTools = discoveredTools.filter(t => t.serverId !== serverId);
+        discoveredTools = [...existingTools, ...serverTools]; // Combine existing from other servers + new
         setupServerHealthCheck(client, serverId, healthCheckIntervalMs);
         notifyMcpServerStatus();
 
+        delete pendingAuthConnections[serverId]; // Clear pending on success
         return { success: true, tools: serverTools };
 
     } catch (error) {
-        console.error(`[${serverId}] Failed to connect or initialize:`, error.message || error);
-        // --- Error Handling and Cleanup ---
-        if (mcpClients[serverId]) {
-            if (mcpClients[serverId].healthCheckInterval) clearInterval(mcpClients[serverId].healthCheckInterval);
-            try { await mcpClients[serverId].close(); } catch (e) { console.error(`[${serverId}] Error closing client on failure: ${e.message}`); }
-            delete mcpClients[serverId];
-        }
-        if (transport instanceof StdioClientTransport && transport.stderr) {
+         console.error(`[${serverId}] Failed to connect or initialize SDK client:`, error.message || error);
+
+         // Determine if auth is required based on error and context
+         let requiresAuth = false;
+         // Crude check for 401 or auth-related errors - SDK might provide better ways
+         if (error.message?.includes('401') || error.code === 401 || error.name === 'UnauthorizedError') {
+             if (authProviderInstance) {
+                  // We tried with auth, and it still failed -> likely invalid token
+                  console.error(`[${serverId}] Authorization failed even when using provided auth provider.`);
+                  // We should trigger re-authentication
+                  requiresAuth = true;
+             } else {
+                 // Failed on initial attempt without auth -> definitely requires auth
+                 console.warn(`[${serverId}] Connection failed without auth provider, assuming authorization required.`);
+                 requiresAuth = true;
+             }
+         }
+
+         // Cleanup
+         if (mcpClients[serverId] === client) {
+             try { await client.close(); } catch (e) { /* ignore */ }
+             delete mcpClients[serverId];
+         }
+         if (transport instanceof StdioClientTransport && transport.stderr) {
              transport.stderr.removeAllListeners();
-        }
-        discoveredTools = discoveredTools.filter(t => t.serverId !== serverId);
-        delete mcpServerLogs[serverId];
-        notifyMcpServerStatus();
-        throw error; // Re-throw
+         }
+         discoveredTools = discoveredTools.filter(t => t.serverId !== serverId);
+         delete mcpServerLogs[serverId];
+         notifyMcpServerStatus();
+
+         if (requiresAuth) {
+             // Keep pending details if auth is needed
+             throw new AuthorizationRequiredError(`Authorization required for ${serverId}`);
+         } else {
+             // Clean up pending details on other errors
+             delete pendingAuthConnections[serverId];
+             throw error; // Re-throw general error
+         }
     }
 }
 
@@ -317,8 +386,16 @@ async function connectConfiguredMcpServers() {
         console.log(`Successfully connected to MCP server: ${serverId}`);
         return { status: 'fulfilled', serverId };
       } catch (error) {
-        console.error(`Failed auto-connect ${serverId}:`, error.message || error);
-        return { status: 'rejected', serverId, reason: error.message || error };
+         if (error instanceof AuthorizationRequiredError) {
+             console.warn(`[${serverId}] Auto-connect failed due to required authorization. Manual connection/authorization needed.`);
+             // Don't count as a hard failure, but log appropriately. User needs to intervene.
+             // We could potentially trigger the auth flow *here* as well, but it might spam the user
+             // if multiple servers require auth on startup. Let's require manual connection for now.
+             return { status: 'rejected', serverId, reason: 'Authorization Required' };
+         } else {
+             console.error(`Failed auto-connect ${serverId}:`, error.message || error);
+             return { status: 'rejected', serverId, reason: error.message || error };
+         }
       }
     });
 
@@ -396,8 +473,14 @@ function initializeMcpHandlers(ipcMain, app, mainWindow, loadSettings, resolveCo
         return { success: true, tools: result.tools || [], allTools: discoveredTools };
 
       } catch (error) {
-        console.error(`Error connecting MCP server (${serverConfig?.id || '?'}):`, error);
-        return { success: false, error: error.message || "Connection error.", tools: [], allTools: discoveredTools };
+         if (error instanceof AuthorizationRequiredError) {
+             console.warn(`[${serverConfig?.id || '?'}] Connection requires user authorization.`);
+             // Send a specific response back to the renderer to indicate auth is needed
+             return { success: false, error: error.message, requiresAuth: true, serverId: serverConfig?.id, allTools: discoveredTools };
+         } else {
+             console.error(`Error connecting MCP server (${serverConfig?.id || '?'})`, error);
+             return { success: false, error: error.message || "Connection error.", tools: [], allTools: discoveredTools };
+         }
       }
     });
 
@@ -470,9 +553,67 @@ function getMcpState() {
     };
 }
 
+// --- retryConnectionAfterAuth (Updated) ---
+async function retryConnectionAfterAuth(serverId /* removed accessToken */) {
+    console.log(`[MCPManager][${serverId}] Attempting reconnection after successful auth...`);
+    const connectionDetails = pendingAuthConnections[serverId];
+    let success = false;
+    let errorMsg = null;
+
+    if (!connectionDetails) {
+        console.error(`[MCPManager][${serverId}] Cannot retry connection: Original connection details not found.`);
+        errorMsg = "Original connection details not found.";
+        // Send status update even if details are missing
+        if (mainWindowInstance?.webContents) {
+             mainWindowInstance.webContents.send('mcp-auth-reconnect-complete', { serverId, success, error: errorMsg });
+        }
+        return;
+    }
+
+    try {
+        // Get the latest tokens and client info using the new getters
+        const tokens = await getTokensForServer(serverId);
+        const clientInfo = await getClientInfoForServer(serverId);
+        if (!tokens || !clientInfo) {
+             errorMsg = "Missing stored auth credentials for retry.";
+             console.error(`[MCPManager][${serverId}] ${errorMsg}`);
+             throw new Error(errorMsg);
+        }
+        console.log(`[MCPManager][${serverId}] Retrieved tokens (token type: ${tokens.token_type}) and client info for retry.`);
+        const staticProvider = new StaticAuthProvider(tokens, clientInfo);
+
+        const result = await connectMcpServerProcess(serverId, connectionDetails, staticProvider);
+
+        if (result.success) {
+             console.log(`[MCPManager][${serverId}] Reconnection attempt reported success.`);
+             success = true;
+        } else {
+             // Should not happen if connectMcpServerProcess throws
+             errorMsg = "Reconnection attempt failed (result indicated failure).";
+             console.error(`[MCPManager][${serverId}] ${errorMsg}`);
+        }
+    } catch (error) {
+        errorMsg = error.message || "Unknown error during reconnection.";
+        console.error(`[MCPManager][${serverId}] Error during reconnection attempt after auth:`, error);
+        // Handle specific errors if needed
+        if (error instanceof AuthorizationRequiredError) {
+             console.error(`[MCPManager][${serverId}] Reconnection failed: Authorization still required even with new token.`);
+             errorMsg = "Authorization failed with new token."; // More specific error
+        }
+    } finally {
+        // Send completion status back to renderer regardless of outcome
+        console.log(`[MCPManager][${serverId}] Sending auth reconnect completion status: success=${success}, error=${errorMsg}`);
+         if (mainWindowInstance?.webContents) {
+             mainWindowInstance.webContents.send('mcp-auth-reconnect-complete', { serverId, success, error: errorMsg });
+         } else {
+              console.warn(`[MCPManager][${serverId}] Could not send auth reconnect completion: mainWindow not available.`);
+         }
+    }
+}
+
 module.exports = {
     initializeMcpHandlers,
     connectConfiguredMcpServers,
-    getMcpState // Export getter for state
-    // Expose connectMcpServerProcess or others only if absolutely necessary outside this module
+    getMcpState,
+    retryConnectionAfterAuth
 }; 

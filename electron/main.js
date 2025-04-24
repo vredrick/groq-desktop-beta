@@ -31,15 +31,15 @@ const toolHandler = require('./toolHandler');
 // Import new manager modules
 const { initializeSettingsHandlers, loadSettings } = require('./settingsManager');
 const { initializeCommandResolver, resolveCommandPath } = require('./commandResolver');
-const { initializeMcpHandlers, connectConfiguredMcpServers, getMcpState } = require('./mcpManager');
+const mcpManager = require('./mcpManager');
 const { initializeWindowManager } = require('./windowManager');
+const authManager = require('./authManager');
 
 // Global variable to hold the main window instance
 let mainWindow;
 
 // Variable to hold loaded model context sizes
 let modelContextSizes = {};
-
 
 // App initialization sequence
 app.whenReady().then(async () => {
@@ -68,21 +68,29 @@ app.whenReady().then(async () => {
   // Initialize settings handlers (needs app)
   initializeSettingsHandlers(ipcMain, app);
 
-  // Initialize MCP handlers (needs app, mainWindow, settings/command functions)
-  initializeMcpHandlers(ipcMain, app, mainWindow, loadSettings, resolveCommandPath);
+  // Initialize MCP handlers (use module object)
+  mcpManager.initializeMcpHandlers(ipcMain, app, mainWindow, loadSettings, resolveCommandPath);
+
+  // Initialize Auth Manager (check will now work)
+  console.log("[Main Init] Initializing Auth Manager...");
+  if (mcpManager && typeof mcpManager.retryConnectionAfterAuth === 'function') {
+      authManager.initialize(mcpManager.retryConnectionAfterAuth);
+  } else {
+       console.error("[Main] CRITICAL: mcpManager or retryConnectionAfterAuth not available for AuthManager initialization!");
+  }
 
   // --- Register Core App IPC Handlers --- //
-
-  // Chat completion with streaming - uses chatHandler
+  // Chat completion (use module object)
   ipcMain.on('chat-stream', async (event, messages, model) => {
-    const currentSettings = loadSettings(); // Get current settings from settingsManager
-    const { discoveredTools } = getMcpState(); // Get current tools from mcpManager
+    const currentSettings = loadSettings();
+    const { discoveredTools } = mcpManager.getMcpState(); // Use module object
     chatHandler.handleChatStream(event, messages, model, currentSettings, modelContextSizes, discoveredTools);
   });
 
-  // Handler for executing tool calls - uses toolHandler
+  // Tool execution (use module object)
+  console.log("[Main Init] Registering execute-tool-call...");
   ipcMain.handle('execute-tool-call', async (event, toolCall) => {
-    const { discoveredTools, mcpClients } = getMcpState(); // Get current state from mcpManager
+    const { discoveredTools, mcpClients } = mcpManager.getMcpState(); // Use module object
     return toolHandler.handleExecuteToolCall(event, toolCall, discoveredTools, mcpClients);
   });
 
@@ -92,13 +100,25 @@ app.whenReady().then(async () => {
       return JSON.parse(JSON.stringify(modelContextSizes));
   });
 
-  // --- Post-initialization Tasks --- //
+  // --- Auth IPC Handler ---
+  ipcMain.handle('start-mcp-auth-flow', async (event, { serverId, serverUrl }) => {
+      if (!serverId || !serverUrl) {
+          throw new Error("Missing serverId or serverUrl for start-mcp-auth-flow");
+      }
+      try {
+          console.log(`[Main] Handling start-mcp-auth-flow for ${serverId}`);
+          const result = await authManager.initiateAuthFlow(serverId, serverUrl);
+          return result;
+      } catch (error) {
+          console.error(`[Main] Error handling start-mcp-auth-flow for ${serverId}:`, error);
+          throw error;
+      }
+  });
 
-  // Attempt to connect to configured MCP servers after setup
-  // Wrap in a small timeout to ensure renderer is likely ready for status updates
+  // --- Post-initialization Tasks --- //
   setTimeout(() => {
-      connectConfiguredMcpServers(); // Call the function from mcpManager
-  }, 1000); // 1 second delay
+      mcpManager.connectConfiguredMcpServers(); // Use module object
+  }, 1000);
 
   console.log("Initialization complete.");
 });

@@ -47,7 +47,7 @@ jobs:
       id: create_release # Add an ID to reference the release later if needed
       uses: softprops/action-gh-release@v2
       with:
-        files: release/${{ env.PRODUCT_NAME }}-${{ env.APP_VERSION }}-${{ runner.arch.toLowerCase() }}.dmg # Use lowercase arch
+        files: release/${{ env.PRODUCT_NAME }}-${{ env.APP_VERSION }}-${{ runner.arch }}.dmg # Revert to using runner.arch directly
         tag_name: v${{ env.APP_VERSION }}-${{ env.SHORT_SHA }} # Use extracted version and short SHA for tag
         name: Release v${{ env.APP_VERSION }} (${{ env.SHORT_SHA }}) # Include short SHA in release name
         body: "Automated build for v${{ env.APP_VERSION }} from commit ${{ env.SHORT_SHA }}"
@@ -65,8 +65,9 @@ jobs:
     - name: Update Cask File
       run: |
         # Get runner architecture (convert to lowercase if needed, though electron-builder seems to use uppercase)
-        ARCH="${{ runner.arch.toLowerCase() }}" # Force lowercase (e.g., arm64, x64)
-        echo "Runner architecture: ${ARCH}"
+        ARCH="${{ runner.arch }}" # Assign original case
+        ARCH=$(echo "$ARCH" | tr '[:upper:]' '[:lower:]') # Convert to lowercase using tr
+        echo "Runner architecture (lowercase): ${ARCH}"
 
         # Construct DMG name and URL using extracted info and arch
         # PRODUCT_NAME, APP_VERSION, SHORT_SHA are already in env from previous step

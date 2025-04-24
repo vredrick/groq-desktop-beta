@@ -138,10 +138,36 @@ async function connectMcpServerProcess(serverId, connectionDetails) {
             const sseUrl = new URL(connectionDetails.url);
             transport = new SSEClientTransport(sseUrl, {});
         } else { // stdio
+            // Construct the PATH needed by the script
+            const requiredPaths = [
+                '/usr/local/bin',
+                '/usr/bin',
+                '/bin',
+                '/usr/sbin',
+                '/sbin',
+                process.env.HOME ? `${process.env.HOME}/.deno/bin` : null, // Deno install path
+                '/opt/homebrew/bin' // Homebrew on Apple Silicon
+            ].filter(Boolean); // Remove nulls if HOME isn't set
+
+            const baseEnvPath = process.env.PATH || '';
+            const customEnvPath = connectionDetails.env?.PATH || '';
+            const combinedPath = [
+                ...requiredPaths,
+                ...baseEnvPath.split(':'),
+                ...customEnvPath.split(':')
+            ].filter((p, i, arr) => p && arr.indexOf(p) === i).join(':'); // Deduplicate and join
+
+            const finalEnv = {
+                 ...process.env, // Base environment
+                 ...connectionDetails.env, // Custom env from config
+                 PATH: combinedPath // Override with the combined PATH
+            };
+
             const transportOptions = {
                 command: connectionDetails.command,
                 args: connectionDetails.args || [],
-                env: { ...process.env, ...connectionDetails.env },
+                env: finalEnv,
+                cwd: path.dirname(connectionDetails.command), // Set cwd to script's directory
                 connectTimeout: connectTimeout,
                 stderr: 'pipe'
             };

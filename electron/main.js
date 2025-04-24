@@ -1,5 +1,25 @@
+const { app } = require('electron');
+const fs   = require('fs');
+const path = require('path');
+
+// Create ~/Library/Logs/Groq Desktop if it does not exist
+app.setAppLogsPath();
+const logFile = path.join(app.getPath('logs'), 'main.log');
+const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+
+// Mirror every console.* call to the file
+['log', 'info', 'warn', 'error'].forEach(fn => {
+  const orig = console[fn].bind(console);
+  console[fn] = (...args) => {
+    orig(...args);
+    logStream.write(args.map(String).join(' ') + '\n');
+  };
+});
+
+console.log('Groq Desktop started, logging to', logFile);
+
 // Import necessary Electron modules
-const { app, BrowserWindow, ipcMain, screen, shell } = require('electron');
+const { BrowserWindow, ipcMain, screen, shell } = require('electron');
 
 // Import shared models
 const { MODEL_CONTEXT_SIZES } = require('../shared/models.js');

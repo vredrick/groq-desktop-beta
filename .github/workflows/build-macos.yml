@@ -108,9 +108,10 @@ jobs:
 
         echo "Updating Cask File: ${CASK_FILE}"
         # Use sed to replace placeholders - use pipe delimiter for URLs/paths
-        sed -i.bak "s|__VERSION__|${{ env.APP_VERSION }}|g" "${CASK_FILE}"
-        sed -i.bak "s|__SHA256__|${SHA256}|g" "${CASK_FILE}"
-        sed -i.bak "s|__URL__|${DOWNLOAD_URL}|g" "${CASK_FILE}"
+        # Replace the entire line starting with version/sha256/url
+        sed -i.bak "s|^ *version .*|  version \"${{ env.APP_VERSION }}\"|" "${CASK_FILE}"
+        sed -i.bak "s|^ *sha256 .*|  sha256 \"${SHA256}\"|" "${CASK_FILE}"
+        sed -i.bak "s|^ *url .*|  url \"${DOWNLOAD_URL}\"|" "${CASK_FILE}"
         rm "${CASK_FILE}.bak" # Clean up sed backup
 
         echo "Updated Cask File Content:"

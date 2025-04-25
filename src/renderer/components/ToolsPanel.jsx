@@ -15,15 +15,20 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
         const settings = await window.electron.getSettings();
         if (settings && settings.mcpServers) {
           const servers = Object.entries(settings.mcpServers).map(([id, config]) => {
-            // Determine transport type (default to stdio if missing)
-            const transportType = config.transport === 'sse' ? 'sse' : 'stdio';
+            // Determine transport type accurately
+            let transportType = 'stdio'; // Default
+            if (config.transport === 'sse') {
+                transportType = 'sse';
+            } else if (config.transport === 'streamableHttp') {
+                transportType = 'streamableHttp';
+            }
+
             return {
               id,
-              // Include relevant fields based on transport type for display?
               command: transportType === 'stdio' ? config.command : undefined,
               args: transportType === 'stdio' ? (config.args || []) : [],
-              url: transportType === 'sse' ? config.url : undefined,
-              transport: transportType // Store the transport type
+              url: (transportType === 'sse' || transportType === 'streamableHttp') ? config.url : undefined,
+              transport: transportType // Store the correct transport type
             };
           });
           setConfiguredServers(servers);
@@ -220,6 +225,8 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
                       <div className="text-sm text-gray-500 mt-1">
                         {server.transport === 'sse' ? (
                           <div><span className="font-mono">Type: SSE | URL: {server.url || 'N/A'}</span></div>
+                        ) : server.transport === 'streamableHttp' ? (
+                          <div><span className="font-mono">Type: Streamable HTTP | URL: {server.url || 'N/A'}</span></div>
                         ) : (
                           <div><span className="font-mono">Type: Stdio | $ {server.command || 'N/A'} {server.args.join(' ')}</span></div>
                         )}

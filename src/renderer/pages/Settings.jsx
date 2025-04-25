@@ -447,9 +447,17 @@ function Settings() {
     if (!serverToEdit) return;
 
     setEditingServerId(serverId);
-    
-    // Determine transport type (default to stdio if missing)
-    const transport = serverToEdit.transport === 'sse' ? 'sse' : 'stdio';
+
+    // Determine transport type accurately
+    let transport;
+    if (serverToEdit.transport === 'sse') {
+        transport = 'sse';
+    } else if (serverToEdit.transport === 'streamableHttp') {
+        transport = 'streamableHttp';
+    } else {
+        transport = 'stdio'; // Default to stdio if missing or other value
+    }
+
 
     // Populate form fields based on transport type
     let command = '', argsArray = [], envObject = {}, argsString = '', url = '';
@@ -458,7 +466,7 @@ function Settings() {
         argsArray = Array.isArray(serverToEdit.args) ? serverToEdit.args : [];
         envObject = typeof serverToEdit.env === 'object' && serverToEdit.env !== null ? serverToEdit.env : {};
         argsString = argsArray.join(' ');
-    } else { // sse
+    } else { // sse or streamableHttp
         url = serverToEdit.url || '';
         // Ensure stdio fields are clear
         command = '';
@@ -468,11 +476,11 @@ function Settings() {
 
     setNewMcpServer({
       id: serverId, // Keep the original ID in the form
-      transport: transport,
+      transport: transport, // Set the correct transport type
       command: command,
       args: argsString,
       env: envObject,
-      url: url
+      url: url // URL will be populated correctly now
     });
 
     // Also populate the JSON input field based on the correct structure
@@ -480,8 +488,9 @@ function Settings() {
       let jsonConfig;
       if (transport === 'stdio') {
           jsonConfig = { transport: 'stdio', command, args: argsArray, env: envObject };
-      } else {
-          jsonConfig = { transport: 'sse', url };
+      } else { // sse or streamableHttp
+          // Use the determined transport type for the JSON representation
+          jsonConfig = { transport: transport, url };
       }
       const jsonString = JSON.stringify(jsonConfig, null, 2);
       setJsonInput(jsonString);
@@ -495,7 +504,7 @@ function Settings() {
     setJsonError(null);
 
     // Optional: Scroll to the form or highlight it
-    // window.scrollTo({ top: document.getElementById('mcp-form').offsetTop, behavior: 'smooth' }); 
+    // window.scrollTo({ top: document.getElementById('mcp-form').offsetTop, behavior: 'smooth' });
   };
 
   // Function to cancel editing
@@ -950,12 +959,12 @@ function Settings() {
                   {/* SSE Specific Fields */}
                   {newMcpServer.transport === 'sse' && (
                     <div className="mb-3">
-                      <label htmlFor="server-url" className="block text-sm font-medium text-gray-300 mb-1">
+                      <label htmlFor="server-url-sse" className="block text-sm font-medium text-gray-300 mb-1">
                         SSE URL:
                       </label>
                       <input
                         type="url"
-                        id="server-url"
+                        id="server-url-sse" // Unique ID
                         name="url"
                         value={newMcpServer.url}
                         onChange={handleNewMcpServerChange}
@@ -969,15 +978,15 @@ function Settings() {
                     </div>
                   )}
 
-                  {/* StreamableHTTP Specific Fields */} 
+                  {/* StreamableHTTP Specific Fields */}
                   {newMcpServer.transport === 'streamableHttp' && (
                     <div className="mb-3">
-                      <label htmlFor="server-url" className="block text-sm font-medium text-gray-300 mb-1">
+                      <label htmlFor="server-url-http" className="block text-sm font-medium text-gray-300 mb-1">
                         Streamable HTTP URL:
                       </label>
                       <input
                         type="url"
-                        id="server-url"
+                        id="server-url-http" // Unique ID
                         name="url"
                         value={newMcpServer.url}
                         onChange={handleNewMcpServerChange}

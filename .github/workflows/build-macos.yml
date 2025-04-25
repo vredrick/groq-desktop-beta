@@ -35,15 +35,18 @@ jobs:
         PRODUCT_NAME=$(node -p "require('./package.json').build.productName || require('./package.json').name")
         SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
         BUILD_TIMESTAMP=$(date +'%Y%m%d%H%M') # Generate timestamp YYYYMMDDHHMM
+        CASK_VERSION="${APP_VERSION}-${BUILD_TIMESTAMP}" # Combine with hyphen
         echo "APP_VERSION=${APP_VERSION}" >> $GITHUB_ENV
         echo "PRODUCT_NAME=${PRODUCT_NAME}" >> $GITHUB_ENV
         echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
         echo "BUILD_TIMESTAMP=${BUILD_TIMESTAMP}" >> $GITHUB_ENV # Add timestamp to env
+        echo "CASK_VERSION=${CASK_VERSION}" >> $GITHUB_ENV # Export combined version
         # Use environment files for outputs
         echo "version=${APP_VERSION}" >> $GITHUB_OUTPUT
         echo "product_name=${PRODUCT_NAME}" >> $GITHUB_OUTPUT
         echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
         echo "build_timestamp=${BUILD_TIMESTAMP}" >> $GITHUB_OUTPUT # Output timestamp
+        echo "cask_version=${CASK_VERSION}" >> $GITHUB_OUTPUT # Output combined version
 
     - name: Build Electron app
       run: pnpm dist # This script handles both vite build and electron build
@@ -143,8 +146,8 @@ jobs:
         echo "Updating Cask File: ${CASK_FILE}"
         # Use sed to replace the entire line
         # Use the DOWNLOAD_URL constructed to match the working URL (dot, uppercase arch)
-        # Format version as two strings: version "X.Y.Z", "TIMESTAMP"
-        sed -i.bak "s|^ *version .*|  version \"${{ env.APP_VERSION }}\", \"${{ env.BUILD_TIMESTAMP }}\"|" "${CASK_FILE}"
+        # Use the single hyphenated CASK_VERSION string
+        sed -i.bak "s|^ *version .*|  version \"${{ env.CASK_VERSION }}\"|" "${CASK_FILE}"
         sed -i.bak "s|^ *sha256 .*|  sha256 \"${SHA256}\"|" "${CASK_FILE}"
         sed -i.bak "s|^ *url .*|  url \"${DOWNLOAD_URL}\"|" "${CASK_FILE}"
         rm "${CASK_FILE}.bak" # Clean up sed backup
@@ -164,8 +167,8 @@ jobs:
           echo "No changes detected in the cask file. Skipping commit."
         else
           echo "Changes detected. Committing and pushing cask update."
-          # Update commit message format
-          git commit -m "Update groq-desktop cask to v${{ env.APP_VERSION }} build ${{ env.BUILD_TIMESTAMP }}"
+          # Update commit message format to use hyphenated version
+          git commit -m "Update groq-desktop cask to v${{ env.CASK_VERSION }}"
           git push
           echo "Pushed cask update to ricklamers/homebrew-groq-desktop-unofficial."
         fi

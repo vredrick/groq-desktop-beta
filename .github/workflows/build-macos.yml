@@ -40,7 +40,7 @@ jobs:
         echo "PRODUCT_NAME=${PRODUCT_NAME}" >> $GITHUB_ENV
         echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
         echo "BUILD_TIMESTAMP=${BUILD_TIMESTAMP}" >> $GITHUB_ENV # Add timestamp to env
-        echo "cask_version=${CASK_VERSION}" >> $GITHUB_OUTPUT # Output cask version
+        echo "CASK_VERSION=${CASK_VERSION}" >> $GITHUB_ENV # Ensure CASK_VERSION is in the environment for later steps
         # Use environment files for outputs
         echo "version=${APP_VERSION}" >> $GITHUB_OUTPUT
         echo "product_name=${PRODUCT_NAME}" >> $GITHUB_OUTPUT

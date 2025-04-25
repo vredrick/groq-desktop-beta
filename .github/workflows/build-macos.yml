@@ -35,18 +35,17 @@ jobs:
         PRODUCT_NAME=$(node -p "require('./package.json').build.productName || require('./package.json').name")
         SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
         BUILD_TIMESTAMP=$(date +'%Y%m%d%H%M') # Generate timestamp YYYYMMDDHHMM
-        CASK_VERSION="${APP_VERSION}.${BUILD_TIMESTAMP}" # Combine version and timestamp
+        CASK_VERSION="${APP_VERSION},${BUILD_TIMESTAMP}" # Combine version and timestamp with a comma
         echo "APP_VERSION=${APP_VERSION}" >> $GITHUB_ENV
         echo "PRODUCT_NAME=${PRODUCT_NAME}" >> $GITHUB_ENV
         echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
         echo "BUILD_TIMESTAMP=${BUILD_TIMESTAMP}" >> $GITHUB_ENV # Add timestamp to env
-        echo "CASK_VERSION=${CASK_VERSION}" >> $GITHUB_ENV # Add cask version to env
+        echo "cask_version=${CASK_VERSION}" >> $GITHUB_OUTPUT # Output cask version
         # Use environment files for outputs
         echo "version=${APP_VERSION}" >> $GITHUB_OUTPUT
         echo "product_name=${PRODUCT_NAME}" >> $GITHUB_OUTPUT
         echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
         echo "build_timestamp=${BUILD_TIMESTAMP}" >> $GITHUB_OUTPUT # Output timestamp
-        echo "cask_version=${CASK_VERSION}" >> $GITHUB_OUTPUT # Output cask version
 
     - name: Build Electron app
       run: pnpm dist # This script handles both vite build and electron build
@@ -167,7 +166,7 @@ jobs:
           echo "No changes detected in the cask file. Skipping commit."
         else
           echo "Changes detected. Committing and pushing cask update."
-          # Use CASK_VERSION in the commit message for clarity
+          # Use CASK_VERSION (with comma) in the commit message
           git commit -m "Update groq-desktop cask to v${{ env.CASK_VERSION }}"
           git push
           echo "Pushed cask update to ricklamers/homebrew-groq-desktop-unofficial."

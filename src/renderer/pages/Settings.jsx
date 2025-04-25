@@ -165,6 +165,8 @@ function Settings() {
       delete updatedEnv[key];
       return { ...prev, env: updatedEnv };
     });
+    setUseJsonInput(false);
+    setJsonError(null);
   };
 
   const handleEnvVarChange = (e) => {
@@ -325,9 +327,9 @@ function Settings() {
               args: argsArray,
               env: newMcpServer.env
           };
-      } else { // sse
+      } else { // sse or streamableHttp
           serverConfig = {
-              transport: 'sse',
+              transport: newMcpServer.transport, // Keep the selected transport
               url: newMcpServer.url
           };
           // Explicitly exclude stdio fields if they somehow exist
@@ -383,9 +385,9 @@ function Settings() {
               args, // Use the parsed array
               env: newMcpServer.env
           };
-      } else { // sse
+      } else { // sse or streamableHttp
           if (!newMcpServer.url || !newMcpServer.url.trim()) {
-              setSaveStatus({ type: 'error', message: 'URL is required for SSE transport' });
+              setSaveStatus({ type: 'error', message: 'URL is required for SSE or Streamable HTTP transport' });
               return;
           }
           try {
@@ -396,7 +398,7 @@ function Settings() {
               return;
           }
           serverConfig = {
-              transport: 'sse',
+              transport: newMcpServer.transport,
               url: newMcpServer.url
           };
       }
@@ -757,6 +759,8 @@ function Settings() {
                     <div className="text-sm text-gray-500">
                       {config.transport === 'sse' ? (
                         <div><span className="font-mono break-all">Type: SSE | URL: {config.url}</span></div>
+                      ) : config.transport === 'streamableHttp' ? (
+                        <div><span className="font-mono break-all">Type: Streamable HTTP | URL: {config.url}</span></div>
                       ) : (
                         <>
                           <div><span className="font-mono break-all">Type: Stdio | $ {config.command} {(config.args || []).join(' ')}</span></div>
@@ -846,6 +850,7 @@ function Settings() {
                 >
                   <option value="stdio">Standard I/O (stdio)</option>
                   <option value="sse">Server-Sent Events (SSE)</option>
+                  <option value="streamableHttp">Streamable HTTP</option>
                 </select>
               </div>
 
@@ -963,6 +968,28 @@ function Settings() {
                        </p>
                     </div>
                   )}
+
+                  {/* StreamableHTTP Specific Fields */} 
+                  {newMcpServer.transport === 'streamableHttp' && (
+                    <div className="mb-3">
+                      <label htmlFor="server-url" className="block text-sm font-medium text-gray-300 mb-1">
+                        Streamable HTTP URL:
+                      </label>
+                      <input
+                        type="url"
+                        id="server-url"
+                        name="url"
+                        value={newMcpServer.url}
+                        onChange={handleNewMcpServerChange}
+                        className="w-full px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm"
+                        placeholder="e.g., http://localhost:8080/mcp"
+                        required={newMcpServer.transport === 'streamableHttp'}
+                      />
+                       <p className="text-xs text-gray-400 mt-1">
+                         Enter the full URL for the Streamable HTTP endpoint.
+                       </p>
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="mb-4">
@@ -974,7 +1001,7 @@ function Settings() {
                     value={jsonInput}
                     onChange={handleJsonInputChange}
                     className="w-full px-3 py-2 border border-gray-500 rounded-md bg-transparent text-white placeholder-gray-400 text-sm font-mono"
-                    placeholder={`{\n  "transport": "stdio",\n  "command": "npx",\n  "args": ["-y", "..."],\n  "env": { ... }\n}\n\n// OR\n\n{\n  "transport": "sse",\n  "url": "http://localhost:8000/sse"\n}`}
+                    placeholder={`{\n  "transport": "stdio",\n  "command": "npx",\n  "args": ["-y", "..."],\n  "env": { ... }\n}\n\n// OR\n\n{\n  "transport": "sse",\n  "url": "http://localhost:8000/sse"\n}\n\n// OR\n\n{\n  "transport": "streamableHttp",\n  "url": "http://localhost:8080/mcp"\n}`}
                     rows={10}
                   />
                   {jsonError && (

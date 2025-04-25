@@ -4,6 +4,7 @@ const { URL } = require('url'); // Import URL
 const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
 const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
 const { SSEClientTransport } = require('@modelcontextprotocol/sdk/client/sse.js');
+const { StreamableHTTPClientTransport } = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
 const { getTokensForServer, getClientInfoForServer } = require('./authManager');
 
 // Custom Error for Auth Requirement
@@ -146,7 +147,7 @@ async function connectMcpServerProcess(serverId, connectionDetails, authProvider
     // --- Validate Config ---
     const transportType = connectionDetails.transport || 'stdio';
     if (transportType === 'stdio' && !connectionDetails.command) throw new Error(`[${serverId}] Internal Error: Missing command for stdio.`);
-    if (transportType === 'sse' && !connectionDetails.url) throw new Error(`[${serverId}] Internal Error: Missing url for sse.`);
+    if ((transportType === 'sse' || transportType === 'streamableHttp') && !connectionDetails.url) throw new Error(`[${serverId}] Internal Error: Missing url for ${transportType}.`);
 
     // --- Determine Server Type & Timeouts ---
     let connectTimeout = 5000;
@@ -161,8 +162,8 @@ async function connectMcpServerProcess(serverId, connectionDetails, authProvider
 
     console.log(`Attempting ${transportType.toUpperCase()} connection to ${serverId}... ${authProviderInstance ? '(with auth provider)' : '(without auth provider)'}`);
 
-    // Store connection details ONLY on initial SSE attempt without provider
-    if (!authProviderInstance && transportType === 'sse') {
+    // Store connection details ONLY on initial SSE or StreamableHTTP attempt without provider
+    if (!authProviderInstance && (transportType === 'sse' || transportType === 'streamableHttp')) {
         pendingAuthConnections[serverId] = { ...connectionDetails };
     }
 
@@ -180,6 +181,13 @@ async function connectMcpServerProcess(serverId, connectionDetails, authProvider
             // Omit requestInit/eventSourceInit with headers
             transport = new SSEClientTransport(sseUrl, {
                 authProvider: authProviderInstance // Pass the static provider here
+            });
+
+        } else if (transportType === 'streamableHttp') {
+            const httpUrl = new URL(connectionDetails.url);
+            console.log(`Creating StreamableHTTPClientTransport for ${httpUrl.toString()}`);
+            transport = new StreamableHTTPClientTransport(httpUrl, {
+                authProvider: authProviderInstance
             });
 
         } else { // stdio
@@ -303,7 +311,7 @@ async function connectMcpServerProcess(serverId, connectionDetails, authProvider
          // Determine if auth is required based on error and context
          let requiresAuth = false;
          // Crude check for 401 or auth-related errors - SDK might provide better ways
-         if (error.message?.includes('401') || error.code === 401 || error.name === 'UnauthorizedError') {
+         if (error.message?.includes('401') || error.code === 401 || error.name === 'UnauthorizedError' || error instanceof AuthorizationRequiredError) {
              if (authProviderInstance) {
                   // We tried with auth, and it still failed -> likely invalid token
                   console.error(`[${serverId}] Authorization failed even when using provided auth provider.`);
@@ -369,12 +377,13 @@ async function connectConfiguredMcpServers() {
 
     const connectionPromises = serverConfigs.map(async ([serverId, serverConfig]) => {
       try {
-        const transportType = serverConfig.transport === 'sse' ? 'sse' : 'stdio';
+        const transportType = serverConfig.transport === 'sse' ? 'sse' :
+                              serverConfig.transport === 'streamableHttp' ? 'streamableHttp' : 'stdio';
         let connectionDetails = { transport: transportType };
 
-        if (transportType === 'sse') {
-            if (!serverConfig.url) throw new Error(`Missing 'url' for SSE server ${serverId}.`);
-            try { new URL(serverConfig.url); connectionDetails.url = serverConfig.url; } catch (e) { throw new Error(`Invalid 'url' for SSE ${serverId}: ${e.message}`); }
+        if (transportType === 'sse' || transportType === 'streamableHttp') {
+            if (!serverConfig.url) throw new Error(`Missing 'url' for ${transportType.toUpperCase()} server ${serverId}.`);
+            try { new URL(serverConfig.url); connectionDetails.url = serverConfig.url; } catch (e) { throw new Error(`Invalid 'url' for ${transportType.toUpperCase()} ${serverId}: ${e.message}`); }
         } else { // stdio
             if (!serverConfig.command) throw new Error(`Missing 'command' for stdio server ${serverId}.`);
             connectionDetails.command = resolveCommandPathFunc(serverConfig.command);
@@ -423,8 +432,8 @@ function initializeMcpHandlers(ipcMain, app, mainWindow, loadSettings, resolveCo
     // Handler for connecting to an MCP server
     ipcMain.handle('connect-mcp-server', async (event, serverConfig) => {
       if (!serverConfig || !serverConfig.id ||
-          (serverConfig.transport === 'sse' && !serverConfig.url) ||
-          (serverConfig.transport !== 'sse' && !serverConfig.command && !serverConfig.scriptPath)) {
+          ((serverConfig.transport === 'sse' || serverConfig.transport === 'streamableHttp') && !serverConfig.url) ||
+          (!(serverConfig.transport === 'sse' || serverConfig.transport === 'streamableHttp') && !serverConfig.command && !serverConfig.scriptPath)) {
           console.error("Invalid serverConfig for connect-mcp-server:", serverConfig);
           return { success: false, error: "Invalid server configuration.", tools: [], allTools: discoveredTools };
       }
@@ -444,9 +453,9 @@ function initializeMcpHandlers(ipcMain, app, mainWindow, loadSettings, resolveCo
 
         let connectionDetails = { transport: transport || 'stdio' };
 
-        if (connectionDetails.transport === 'sse') {
-            if (!url) return { success: false, error: `Missing 'url' for SSE server ${id}`, tools: [], allTools: discoveredTools };
-            try { new URL(url); connectionDetails.url = url; } catch (e) { return { success: false, error: `Invalid 'url' for SSE ${id}: ${e.message}`, tools: [], allTools: discoveredTools }; }
+        if (connectionDetails.transport === 'sse' || connectionDetails.transport === 'streamableHttp') {
+            if (!url) return { success: false, error: `Missing 'url' for ${connectionDetails.transport.toUpperCase()} server ${id}`, tools: [], allTools: discoveredTools };
+            try { new URL(url); connectionDetails.url = url; } catch (e) { return { success: false, error: `Invalid 'url' for ${connectionDetails.transport.toUpperCase()} ${id}: ${e.message}`, tools: [], allTools: discoveredTools }; }
         } else { // stdio
             if (command) {
                 const resolvedCommand = resolveCommandPathFunc(command);

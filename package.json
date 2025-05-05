@@ -4,6 +4,7 @@
   "description": "A simple Electron app with Groq API integration",
   "main": "electron/main.js",
   "type": "commonjs",
+  "packageManager": "pnpm@10.9.0",
   "scripts": {
     "dev": "concurrently \"pnpm dev:vite\" \"pnpm dev:electron\"",
     "dev:vite": "vite",

@@ -11,6 +11,10 @@ const MODEL_CONTEXT_SIZES = {
     context: 131072,
     vision_supported: true,
   },
+  "qwen/qwen3-32b": {
+    context: 131072,
+    vision_supported: false,
+  },
   "gemma2-9b-it": {
     context: 8192,
     vision_supported: false,

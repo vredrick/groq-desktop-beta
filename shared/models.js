@@ -3,6 +3,10 @@ const MODEL_CONTEXT_SIZES = {
     context: 8192,
     vision_supported: false,
   },
+  "moonshotai/kimi-k2-instruct": {
+    context: 131072,
+    vision_supported: true,
+  },
   "meta-llama/llama-4-scout-17b-16e-instruct": {
     context: 131072,
     vision_supported: true,

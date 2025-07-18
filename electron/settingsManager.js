@@ -15,7 +15,8 @@ function loadSettings() {
             top_p: 0.95,
             mcpServers: {},
             disabledMcpServers: [],
-            customSystemPrompt: ''
+            customSystemPrompt: '',
+            customCompletionUrl: ''
         };
     }
     const userDataPath = appInstance.getPath('userData');
@@ -27,7 +28,8 @@ function loadSettings() {
         top_p: 0.95,
         mcpServers: {},
         disabledMcpServers: [],
-        customSystemPrompt: ''
+        customSystemPrompt: '',
+        customCompletionUrl: ''
     };
 
     try {
@@ -46,6 +48,7 @@ function loadSettings() {
             settings.mcpServers = settings.mcpServers || defaultSettings.mcpServers;
             settings.disabledMcpServers = settings.disabledMcpServers || defaultSettings.disabledMcpServers;
             settings.customSystemPrompt = settings.customSystemPrompt || defaultSettings.customSystemPrompt;
+            settings.customCompletionUrl = settings.customCompletionUrl || defaultSettings.customCompletionUrl;
 
             // Optional: Persist the potentially updated settings back to file if defaults were applied
             // fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));

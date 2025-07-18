@@ -8,7 +8,8 @@ function Settings() {
     top_p: 0.95,
     mcpServers: {},
     disabledMcpServers: [],
-    customSystemPrompt: ''
+    customSystemPrompt: '',
+    customCompletionUrl: ''
   });
   const [saveStatus, setSaveStatus] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -48,7 +49,8 @@ function Settings() {
             top_p: 0.95,
             mcpServers: {},
             disabledMcpServers: [],
-            customSystemPrompt: ''
+            customSystemPrompt: '',
+            customCompletionUrl: ''
         }));
       }
     };
@@ -659,6 +661,24 @@ function Settings() {
                 )}
               </button>
             </div>
+          </div>
+
+          <div className="mb-4">
+            <label htmlFor="custom-completion-url" className="block text-sm font-medium text-gray-300 mb-2">
+              Custom Completion URL (Optional)
+            </label>
+            <input
+              type="text"
+              id="custom-completion-url"
+              name="customCompletionUrl"
+              value={settings.customCompletionUrl || ''}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-transparent text-white placeholder-gray-400"
+              placeholder="e.g., http://127.0.0.1:8000/api or http://localhost:8000/api"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Override the default Groq API base URL. The SDK will automatically append /openai/v1/chat/completions to your URL. Leave empty to use the default Groq API.
+            </p>
           </div>
 
           <h3 className="text-lg font-medium mt-6 mb-3 text-white">Generation Parameters</h3>

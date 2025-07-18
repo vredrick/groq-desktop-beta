@@ -40,7 +40,28 @@ async function handleChatStream(event, messages, model, settings, modelContextSi
         }
 
         // Initialize Groq SDK
-        const groq = new Groq({ apiKey: settings.GROQ_API_KEY });
+        const groqConfig = { apiKey: settings.GROQ_API_KEY };
+        
+        // Use custom completion URL if provided
+        if (settings.customCompletionUrl && settings.customCompletionUrl.trim()) {
+            let customUrl = settings.customCompletionUrl.trim();
+            
+            // Clean up common trailing paths that users might accidentally include
+            // since the SDK will automatically append /openai/v1/chat/completions
+            customUrl = customUrl.replace(/\/openai\/v1\/chat\/completions\/?$/, '');
+            customUrl = customUrl.replace(/\/openai\/v1\/?$/, '');
+            customUrl = customUrl.replace(/\/chat\/completions\/?$/, '');
+            customUrl = customUrl.replace(/\/$/, ''); // Remove trailing slash
+            
+            // Force IPv4 for localhost to avoid IPv6 connection issues
+            customUrl = customUrl.replace(/^http:\/\/localhost:/i, 'http://127.0.0.1:');
+            customUrl = customUrl.replace(/^https:\/\/localhost:/i, 'https://127.0.0.1:');
+            
+            groqConfig.baseURL = customUrl;
+            console.log(`Using custom completion URL: ${groqConfig.baseURL}`);
+        }
+        
+        const groq = new Groq(groqConfig);
 
         // Prepare tools for the API call
         const tools = (discoveredTools || []).map(tool => ({

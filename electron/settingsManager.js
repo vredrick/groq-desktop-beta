@@ -16,7 +16,8 @@ function loadSettings() {
             mcpServers: {},
             disabledMcpServers: [],
             customSystemPrompt: '',
-            customCompletionUrl: ''
+            customCompletionUrl: '',
+            toolOutputLimit: 8000
         };
     }
     const userDataPath = appInstance.getPath('userData');
@@ -29,7 +30,8 @@ function loadSettings() {
         mcpServers: {},
         disabledMcpServers: [],
         customSystemPrompt: '',
-        customCompletionUrl: ''
+        customCompletionUrl: '',
+        toolOutputLimit: 8000
     };
 
     try {
@@ -49,6 +51,7 @@ function loadSettings() {
             settings.disabledMcpServers = settings.disabledMcpServers || defaultSettings.disabledMcpServers;
             settings.customSystemPrompt = settings.customSystemPrompt || defaultSettings.customSystemPrompt;
             settings.customCompletionUrl = settings.customCompletionUrl || defaultSettings.customCompletionUrl;
+            settings.toolOutputLimit = settings.toolOutputLimit ?? defaultSettings.toolOutputLimit;
 
             // Optional: Persist the potentially updated settings back to file if defaults were applied
             // fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));

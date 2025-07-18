@@ -9,7 +9,8 @@ function Settings() {
     mcpServers: {},
     disabledMcpServers: [],
     customSystemPrompt: '',
-    customCompletionUrl: ''
+    customCompletionUrl: '',
+    toolOutputLimit: 8000
   });
   const [saveStatus, setSaveStatus] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -50,7 +51,8 @@ function Settings() {
             mcpServers: {},
             disabledMcpServers: [],
             customSystemPrompt: '',
-            customCompletionUrl: ''
+            customCompletionUrl: '',
+            toolOutputLimit: 8000
         }));
       }
     };
@@ -729,6 +731,33 @@ function Settings() {
               </div>
               <p className="text-xs text-gray-400 mt-1">
                 Controls diversity by limiting tokens to the most likely ones.
+              </p>
+            </div>
+          </div>
+
+          {/* Tool Output Limit Section */}
+          <div className="mt-6">
+            <div>
+              <label htmlFor="toolOutputLimit" className="block text-sm font-medium text-gray-300 mb-2">
+                Tool Output Limit: {settings.toolOutputLimit} characters
+              </label>
+              <div className="flex items-center">
+                <span className="mr-2 text-xs text-gray-400">1000</span>
+                <input
+                  type="range"
+                  id="toolOutputLimit"
+                  name="toolOutputLimit"
+                  min="1000"
+                  max="50000"
+                  step="1000"
+                  value={settings.toolOutputLimit}
+                  onChange={handleNumberChange}
+                  className="w-full"
+                />
+                <span className="ml-2 text-xs text-gray-400">50000</span>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">
+                Maximum character limit for tool call outputs. Longer outputs will be truncated with "..." to avoid overwhelming the AI model.
               </p>
             </div>
           </div>

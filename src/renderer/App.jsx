@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
 import ToolsPanel from './components/ToolsPanel';
 import ToolApprovalModal from './components/ToolApprovalModal';
+import SessionHistory from './components/SessionHistory';
 import { useChat } from './context/ChatContext'; // Import useChat hook
 // Import shared model definitions - REMOVED
 // import { MODEL_CONTEXT_SIZES } from '../../shared/models';
@@ -64,12 +65,21 @@ const setToolApprovalStatus = (toolName, status) => {
 
 
 function App() {
+  const navigate = useNavigate();
   // const [messages, setMessages] = useState([]); // Remove local state
-  const { messages, setMessages } = useChat(); // Use context state
+  const { 
+    messages, 
+    setMessages,
+    saveMessageToSession,
+    saveToolCallToSession, 
+    saveToolResultToSession,
+    workingDirectory 
+  } = useChat(); // Use context state
   const [loading, setLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState('llama-3.3-70b-versatile');
   const [mcpTools, setMcpTools] = useState([]);
   const [isToolsPanelOpen, setIsToolsPanelOpen] = useState(false);
+  const [isSessionHistoryOpen, setIsSessionHistoryOpen] = useState(false);
   const [mcpServersStatus, setMcpServersStatus] = useState({ loading: false, message: "" });
   const messagesEndRef = useRef(null);
   // Store the list of models from capabilities keys
@@ -146,6 +156,13 @@ function App() {
       setMcpServersStatus({ loading: false, message: "Error updating server status" });
     }
   };
+
+  // Check if a project is selected, redirect to project selector if not
+  useEffect(() => {
+    if (!workingDirectory) {
+      navigate('/projects');
+    }
+  }, [workingDirectory, navigate]);
 
   // Load settings, MCP tools, and model configs when component mounts
   useEffect(() => {
@@ -266,7 +283,13 @@ function App() {
 
   const executeToolCall = async (toolCall) => {
     try {
+      // Save the tool call to session
+      await saveToolCallToSession(toolCall);
+      
       const response = await window.electron.executeToolCall(toolCall);
+      
+      // Save the tool result to session
+      await saveToolResultToSession(toolCall.function.name, response.error || response.result || '');
       
       // Return the tool response message in the correct format
       return {
@@ -276,6 +299,9 @@ function App() {
       };
     } catch (error) {
       console.error('Error executing tool call:', error);
+      // Save the error as a tool result
+      await saveToolResultToSession(toolCall.function.name, error.message);
+      
       return { 
         role: 'tool', 
         content: JSON.stringify({ error: error.message }),
@@ -406,7 +432,8 @@ function App() {
                     role: 'assistant',
                     content: data.content || '',
                     tool_calls: data.tool_calls,
-                    reasoning: data.reasoning
+                    reasoning: data.reasoning,
+                    isStreaming: false
                 };
                 turnAssistantMessage = finalAssistantData; // Store the completed message
 
@@ -422,6 +449,10 @@ function App() {
                     }
                     return newMessages;
                 });
+                
+                // Save the complete assistant message to session
+                saveMessageToSession(finalAssistantData);
+                
                 resolve();
             });
 
@@ -511,6 +542,9 @@ function App() {
     // Add user message optimistically BEFORE the API call
     const initialMessages = [...messages, userMessage];
     setMessages(initialMessages);
+    
+    // Save user message to session
+    saveMessageToSession(userMessage);
 
     setLoading(true);
 
@@ -813,89 +847,70 @@ function App() {
     }
   };
   return (
-    <div className="flex flex-col h-screen">
-      <header className="bg-user-message-bg shadow">
-        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-          <h1 className="text-2xl text-white">
-            groq<span className="text-primary">desktop</span>
-          </h1>
+    <div className="flex flex-col h-screen bg-bg-primary">
+      <header className="bg-bg-secondary border-b border-border-primary">
+        <div className="max-w-7xl mx-auto py-3 px-6 flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <div className="flex items-center">
-              <label htmlFor="model-select" className="mr-3 text-gray-300 font-medium">Model:</label>
-              <select
-                id="model-select"
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="border border-gray-500 rounded-md text-white"
-              >
-                {models.map(model => (
-                  <option key={model} value={model}>{model}</option>
-                ))}
-              </select>
-            </div>
-            <Link to="/settings" className="btn btn-primary">Settings</Link>
+            <h1 className="text-xl font-semibold text-text-primary">
+              groq<span className="text-primary">desktop</span>
+            </h1>
+            {workingDirectory && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-gray-500">•</span>
+                <span className="text-gray-400">{workingDirectory.split('/').pop() || 'Project'}</span>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsSessionHistoryOpen(true)}
+              className="btn btn-primary text-sm"
+              title="Chat History"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              History
+            </button>
+            <Link to="/settings" className="btn btn-primary text-sm">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Settings
+          </Link>
           </div>
         </div>
       </header>
       
-      <main className="flex-1 overflow-hidden flex flex-col">
-        <div className="flex-1 overflow-y-auto p-2">
-          <MessageList 
-            messages={messages} 
-            onToolCallExecute={executeToolCall} 
-            onRemoveLastMessage={handleRemoveLastMessage} 
-          />
-          <div ref={messagesEndRef} />
-        </div>
-        
-        <div className="bg-user-message-bg p-2">
-          <div className="flex flex-col gap-4">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="tools-container">
-                  <div 
-                    className="tools-button"
-                    onClick={() => {
-                      setIsToolsPanelOpen(!isToolsPanelOpen);
-                      // Force refresh of MCP tools when opening panel
-                      if (!isToolsPanelOpen) {
-                        refreshMcpTools();
-                      }
-                    }}
-                  >
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
-                  {mcpServersStatus.loading && (
-                    <div className="status-indicator loading">
-                      <div className="loading-spinner"></div>
-                      <span>{mcpServersStatus.message}</span>
-                    </div>
-                  )}
-                  {!mcpServersStatus.loading && (
-                    <div className="status-indicator">
-                      <span>{mcpServersStatus.message || "No tools available"}</span>
-                      <button 
-                        className="refresh-button" 
-                        onClick={refreshMcpTools}
-                        title="Refresh MCP tools"
-                      >
-                        <span>↻</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <ChatInput
-              onSendMessage={handleSendMessage}
-              loading={loading}
-              visionSupported={visionSupported}
+      <main className="flex-1 overflow-hidden flex flex-col bg-bg-primary relative">
+        <div className="flex-1 overflow-y-auto px-4 pb-24">
+          <div className="max-w-3xl mx-auto">
+            <MessageList 
+              messages={messages} 
+              onToolCallExecute={executeToolCall} 
+              onRemoveLastMessage={handleRemoveLastMessage} 
             />
+            <div ref={messagesEndRef} />
           </div>
         </div>
+        
+
+        <ChatInput
+          onSendMessage={handleSendMessage}
+          loading={loading}
+          visionSupported={visionSupported}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
+          models={models}
+          onOpenTools={() => {
+            setIsToolsPanelOpen(!isToolsPanelOpen);
+            if (!isToolsPanelOpen) {
+              refreshMcpTools();
+            }
+          }}
+          isToolsOpen={isToolsPanelOpen}
+        />
       </main>
 
       {isToolsPanelOpen && (
@@ -915,6 +930,11 @@ function App() {
         />
       )}
       {/* --- End Tool Approval Modal --- */}
+      
+      <SessionHistory 
+        isOpen={isSessionHistoryOpen}
+        onClose={() => setIsSessionHistoryOpen(false)}
+      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-function ChatInput({ onSendMessage, loading = false, visionSupported = false }) {
+function ChatInput({ onSendMessage, loading = false, visionSupported = false, selectedModel, onModelChange, models = [], onOpenTools, isToolsOpen = false }) {
   const [message, setMessage] = useState('');
   const [images, setImages] = useState([]); // State for selected images
   const textareaRef = useRef(null);
@@ -123,87 +123,129 @@ function ChatInput({ onSendMessage, loading = false, visionSupported = false }) 
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-      {/* Image Previews Area */}
-      {images.length > 0 && (
-        <div className="flex flex-col gap-2 mb-2">
-          <p className="text-sm font-medium text-gray-400">Attached Images ({images.length}):</p>
-          <div className="flex flex-wrap gap-2 p-2 border border-gray-600 rounded-md">
+    <div className="chat-input-container">
+      <form onSubmit={handleSubmit} className="chat-input-form">
+        {/* Image Previews Area */}
+        {images.length > 0 && (
+          <div className="attached-images-preview">
             {images.map((img, index) => (
-              <div key={index} className="relative group w-16 h-16">
+              <div key={index} className="image-preview-item">
                 <img 
                   src={img.base64} 
                   alt={`Preview ${index + 1}`} 
-                  className="w-full h-full object-cover rounded-md cursor-pointer"
-                  // Add onClick for larger preview later if needed
+                  className="image-preview"
                 />
                 <button
                   type="button"
                   onClick={() => removeImage(index)}
-                  className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="image-remove-button"
                   aria-label={`Remove image ${index + 1}`}
                 >
-                  ✕
+                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 6L6 18M6 6l12 12" />
+                  </svg>
                 </button>
               </div>
             ))}
           </div>
-        </div>
-      )}
-
-      <div className="flex items-start gap-2">
-        {/* Image Upload Button - Only show if vision is supported and fewer than 5 images */}
-        {visionSupported && images.length < 5 && (
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()} // Trigger file input
-            // Use the tools-button class like the gear icon
-            className="tools-button" 
-            title="Add Image (max 5)"
-            disabled={loading}
-          >
-            {/* Simple Paperclip Icon */}
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
-          </button>
         )}
-        {/* Hidden File Input */}
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleImageChange}
-          accept="image/*" // Accept only image files
-          multiple // Allow multiple file selection
-          style={{ display: 'none' }} // Hide the actual input
-          disabled={loading || images.length >= 5}
-        />
 
-        {/* Text Area */}
-        <div className="flex-1 flex">
+        <div className="input-field-wrapper">
+          {/* Text Area */}
           <textarea
             ref={textareaRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type a message... (Shift+Enter for newline)"
-            className="w-full block py-2 px-3 border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-transparent text-white placeholder-gray-400 resize-none overflow-hidden max-h-[200px]"
+            placeholder="Reply to Groq..."
+            className="chat-input-field"
             rows={1}
             disabled={loading}
           />
+          
+          {/* Bottom controls */}
+          <div className="input-controls">
+            {/* Left side actions */}
+            <div className="left-controls">
+              {/* Attachment Button */}
+              {visionSupported && (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="control-button"
+                  title="Attach files"
+                  disabled={loading || images.length >= 5}
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 2v20M2 12h20" />
+                  </svg>
+                </button>
+              )}
+              {/* Tools/MCP Button */}
+              <button
+                type="button"
+                className={`control-button ${isToolsOpen ? 'active' : ''}`}
+                title="Tools and integrations"
+                disabled={loading}
+                onClick={onOpenTools}
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+              {/* Hidden File Input */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleImageChange}
+                accept="image/*"
+                multiple
+                style={{ display: 'none' }}
+                disabled={loading || images.length >= 5}
+              />
+            </div>
+
+            {/* Right side actions */}
+            <div className="right-controls">
+              {/* Model Selector */}
+              {models.length > 0 && (
+                <div className="model-selector-wrapper">
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => onModelChange(e.target.value)}
+                    className="model-selector-dropdown"
+                    disabled={loading}
+                  >
+                    {models.map(model => (
+                      <option key={model} value={model}>{model}</option>
+                    ))}
+                  </select>
+                  <svg className="model-selector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </div>
+              )}
+              
+              {/* Send Button */}
+              <button
+                type="submit"
+                className="send-button"
+                disabled={loading || (!message.trim() && images.length === 0)}
+                title="Send message"
+              >
+                {loading ? (
+                  <div className="loading-spinner w-4 h-4"></div>
+                ) : (
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M7 11l5-5m0 0l5 5m-5-5v12" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
-        {/* Send Button */}
-        <button
-          type="submit"
-          className="py-2 px-4 bg-primary hover:bg-primary/90 text-white rounded transition-colors self-end" // Align button to bottom
-          disabled={loading || (!message.trim() && images.length === 0)} // Disable if no text and no images
-        >
-          {loading ? (
-            <span>Sending...</span>
-          ) : (
-            <span>Send</span>
-          )}
-        </button>
-      </div>
-    </form>
+      </form>
+    </div>
   );
 }
 

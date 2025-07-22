@@ -19,7 +19,7 @@ const logStream = fs.createWriteStream(logFile, { flags: 'a' });
 console.log('Groq Desktop started, logging to', logFile);
 
 // Import necessary Electron modules
-const { BrowserWindow, ipcMain, screen, shell } = require('electron');
+const { BrowserWindow, ipcMain, screen, shell, dialog } = require('electron');
 
 // Import shared models
 const { MODEL_CONTEXT_SIZES } = require('../shared/models.js');
@@ -34,12 +34,16 @@ const { initializeCommandResolver, resolveCommandPath } = require('./commandReso
 const mcpManager = require('./mcpManager');
 const { initializeWindowManager } = require('./windowManager');
 const authManager = require('./authManager');
+const sessionManager = require('./sessionManager');
 
 // Global variable to hold the main window instance
 let mainWindow;
 
 // Variable to hold loaded model context sizes
 let modelContextSizes = {};
+
+// Variable to hold current working directory
+let currentWorkingDirectory = null;
 
 // App initialization sequence
 app.whenReady().then(async () => {
@@ -114,6 +118,191 @@ app.whenReady().then(async () => {
           console.error(`[Main] Error handling start-mcp-auth-flow for ${serverId}:`, error);
           throw error;
       }
+  });
+
+  // --- Session Management IPC Handlers ---
+  // Select working directory
+  ipcMain.handle('select-working-directory', async () => {
+    try {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory'],
+        title: 'Select Working Directory for Chat Sessions'
+      });
+      
+      if (!result.canceled && result.filePaths.length > 0) {
+        currentWorkingDirectory = result.filePaths[0];
+        console.log(`Working directory set to: ${currentWorkingDirectory}`);
+        return { success: true, directory: currentWorkingDirectory };
+      }
+      return { success: false, message: 'No directory selected' };
+    } catch (error) {
+      console.error('Error selecting working directory:', error);
+      return { success: false, message: error.message };
+    }
+  });
+
+  // Get current working directory
+  ipcMain.handle('get-current-directory', async () => {
+    return currentWorkingDirectory;
+  });
+
+  // Set working directory programmatically
+  ipcMain.handle('set-working-directory', async (event, directory) => {
+    currentWorkingDirectory = directory;
+    console.log(`Working directory set to: ${currentWorkingDirectory}`);
+    return { success: true, directory: currentWorkingDirectory };
+  });
+
+  // Create new session
+  ipcMain.handle('create-new-session', async () => {
+    if (!currentWorkingDirectory) {
+      return { success: false, message: 'No working directory selected' };
+    }
+    
+    try {
+      const projectDir = sessionManager.getProjectSessionDir(currentWorkingDirectory);
+      const sessionFile = sessionManager.createNewSession(projectDir);
+      console.log(`Created new session: ${sessionFile}`);
+      return { success: true, sessionFile };
+    } catch (error) {
+      console.error('Error creating new session:', error);
+      return { success: false, message: error.message };
+    }
+  });
+
+  // Get current session
+  ipcMain.handle('get-current-session', async () => {
+    if (!currentWorkingDirectory) {
+      return { success: false, message: 'No working directory selected' };
+    }
+    
+    try {
+      const projectDir = sessionManager.getProjectSessionDir(currentWorkingDirectory);
+      const sessionFile = sessionManager.getCurrentSession(projectDir);
+      return { success: true, sessionFile };
+    } catch (error) {
+      console.error('Error getting current session:', error);
+      return { success: false, message: error.message };
+    }
+  });
+
+  // Save message to session
+  ipcMain.handle('save-message', async (event, message) => {
+    if (!currentWorkingDirectory) {
+      return { success: false, message: 'No working directory selected' };
+    }
+    
+    try {
+      const projectDir = sessionManager.getProjectSessionDir(currentWorkingDirectory);
+      const sessionFile = sessionManager.getCurrentSession(projectDir);
+      const saved = sessionManager.saveMessage(sessionFile, message);
+      return { success: saved };
+    } catch (error) {
+      console.error('Error saving message:', error);
+      return { success: false, message: error.message };
+    }
+  });
+
+  // Save tool call to session
+  ipcMain.handle('save-tool-call', async (event, toolCall) => {
+    if (!currentWorkingDirectory) {
+      return { success: false, message: 'No working directory selected' };
+    }
+    
+    try {
+      const projectDir = sessionManager.getProjectSessionDir(currentWorkingDirectory);
+      const sessionFile = sessionManager.getCurrentSession(projectDir);
+      const saved = sessionManager.saveToolCall(sessionFile, toolCall);
+      return { success: saved };
+    } catch (error) {
+      console.error('Error saving tool call:', error);
+      return { success: false, message: error.message };
+    }
+  });
+
+  // Save tool result to session
+  ipcMain.handle('save-tool-result', async (event, toolName, result) => {
+    if (!currentWorkingDirectory) {
+      return { success: false, message: 'No working directory selected' };
+    }
+    
+    try {
+      const projectDir = sessionManager.getProjectSessionDir(currentWorkingDirectory);
+      const sessionFile = sessionManager.getCurrentSession(projectDir);
+      const saved = sessionManager.saveToolResult(sessionFile, toolName, result);
+      return { success: saved };
+    } catch (error) {
+      console.error('Error saving tool result:', error);
+      return { success: false, message: error.message };
+    }
+  });
+
+  // Load session from file
+  ipcMain.handle('load-session', async (event, sessionFile) => {
+    try {
+      const messages = sessionManager.loadSession(sessionFile);
+      return { success: true, messages };
+    } catch (error) {
+      console.error('Error loading session:', error);
+      return { success: false, message: error.message };
+    }
+  });
+
+  // List sessions for current project
+  ipcMain.handle('list-sessions', async () => {
+    if (!currentWorkingDirectory) {
+      return { success: false, message: 'No working directory selected' };
+    }
+    
+    try {
+      const projectDir = sessionManager.getProjectSessionDir(currentWorkingDirectory);
+      const sessions = sessionManager.listSessions(projectDir);
+      return { success: true, sessions };
+    } catch (error) {
+      console.error('Error listing sessions:', error);
+      return { success: false, message: error.message };
+    }
+  });
+
+  // Delete session
+  ipcMain.handle('delete-session', async (event, sessionFile) => {
+    try {
+      const deleted = sessionManager.deleteSession(sessionFile);
+      return { success: deleted };
+    } catch (error) {
+      console.error('Error deleting session:', error);
+      return { success: false, message: error.message };
+    }
+  });
+
+  // Export session as markdown
+  ipcMain.handle('export-session', async (event, sessionFile) => {
+    try {
+      const markdown = sessionManager.exportSessionAsMarkdown(sessionFile);
+      if (markdown) {
+        return { success: true, markdown };
+      }
+      return { success: false, message: 'Failed to export session' };
+    } catch (error) {
+      console.error('Error exporting session:', error);
+      return { success: false, message: error.message };
+    }
+  });
+
+  // Get recent projects
+  ipcMain.handle('get-recent-projects', async () => {
+    try {
+      const projects = sessionManager.getRecentProjects();
+      return projects;
+    } catch (error) {
+      console.error('Error getting recent projects:', error);
+      return [];
+    }
+  });
+
+  // Get Groq projects directory path
+  ipcMain.handle('get-groq-projects-dir', async () => {
+    return sessionManager.getGroqProjectsDir();
   });
 
   // --- Post-initialization Tasks --- //

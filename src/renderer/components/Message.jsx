@@ -20,11 +20,13 @@ function Message({ message, children, onToolCallExecute, allMessages, isLastMess
     return toolMessage ? toolMessage.content : null;
   };
 
-  const messageClasses = `flex ${isUser ? 'justify-end' : 'justify-start'}`;
-  // Apply background only for user messages
-  const bubbleStyle = isUser ? 'bg-user-message-bg' : ''; // No background for assistant/system
-  const bubbleClasses = `relative px-4 py-3 rounded-lg max-w-xl ${bubbleStyle} group`; // Added group for remove button
-  const wrapperClasses = `message-content-wrapper ${isUser ? 'text-white' : 'text-white'} break-words`; // Keep text white for both, use break-words
+  const messageClasses = `flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`;
+  // Updated styling for messages
+  const bubbleStyle = isUser 
+    ? 'bg-surface-secondary border border-border-primary' 
+    : ''; // No background/border for assistant
+  const bubbleClasses = `relative px-4 py-3 rounded-xl max-w-3xl ${bubbleStyle} group`;
+  const wrapperClasses = `message-content-wrapper text-text-primary break-words`;
 
   const toggleReasoning = () => setShowReasoning(!showReasoning);
 
@@ -34,16 +36,16 @@ function Message({ message, children, onToolCallExecute, allMessages, isLastMess
         {isLastMessage && onRemoveMessage && (
           <button 
             onClick={onRemoveMessage}
-            className={`absolute ${isUser ? 'right-1' : 'left-1'} top-0 -translate-y-1/2 bg-red-500 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-600 z-10`}
+            className={`absolute ${isUser ? 'right-2' : 'left-2'} -top-2 bg-error text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-error/80 hover:scale-110 z-10`}
             title="Remove message"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         )}
         {isStreamingMessage && (
-          <div className="streaming-indicator mb-1">
+          <div className="streaming-indicator">
             <span className="dot-1"></span>
             <span className="dot-2"></span>
             <span className="dot-3"></span>
@@ -62,27 +64,17 @@ function Message({ message, children, onToolCallExecute, allMessages, isLastMess
         ))}
 
         {hasReasoning && (
-          <div className="mt-3 border-t border-gray-600 pt-2">
+          <div className="reasoning-section">
             <button 
               onClick={toggleReasoning}
-              className="flex items-center text-sm px-3 py-1 rounded-md bg-gray-600 hover:bg-gray-500 transition-colors duration-200"
+              className="reasoning-toggle"
             >
-              <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                className={`h-4 w-4 mr-1 transition-transform duration-200 ${showReasoning ? 'rotate-90' : ''}`} 
-                fill="none" 
-                viewBox="0 0 24 24" 
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
               {showReasoning ? 'Hide reasoning' : 'Show reasoning'}
             </button>
             
             {showReasoning && (
-              <div className="mt-2 p-3 bg-gray-800 rounded-md text-sm border border-gray-600">
-                <pre className="whitespace-pre-wrap break-words">{reasoning}</pre>
+              <div className="reasoning-content">
+                <pre className="whitespace-pre-wrap break-words font-mono text-xs">{reasoning}</pre>
               </div>
             )}
           </div>

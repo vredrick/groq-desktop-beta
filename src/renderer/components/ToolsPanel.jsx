@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import LogViewerModal from './LogViewerModal';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer }) {
-  const [expandedTools, setExpandedTools] = useState({});
   const [configuredServers, setConfiguredServers] = useState([]);
   const [serverStatuses, setServerStatuses] = useState({});
-  const [authRequiredServers, setAuthRequiredServers] = useState({});
-  const [viewingLogsForServer, setViewingLogsForServer] = useState(null);
+  const [expandedServers, setExpandedServers] = useState({});
+  const [disabledTools, setDisabledTools] = useState({});
   const [actionInProgress, setActionInProgress] = useState(null);
+  const navigate = useNavigate();
+  const panelRef = useRef(null);
 
   useEffect(() => {
     const loadConfiguredServers = async () => {
@@ -15,8 +16,7 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
         const settings = await window.electron.getSettings();
         if (settings && settings.mcpServers) {
           const servers = Object.entries(settings.mcpServers).map(([id, config]) => {
-            // Determine transport type accurately
-            let transportType = 'stdio'; // Default
+            let transportType = 'stdio';
             if (config.transport === 'sse') {
                 transportType = 'sse';
             } else if (config.transport === 'streamableHttp') {
@@ -28,7 +28,7 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
               command: transportType === 'stdio' ? config.command : undefined,
               args: transportType === 'stdio' ? (config.args || []) : [],
               url: (transportType === 'sse' || transportType === 'streamableHttp') ? config.url : undefined,
-              transport: transportType // Store the correct transport type
+              transport: transportType
             };
           });
           setConfiguredServers(servers);
@@ -36,7 +36,6 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
           // Determine which servers are currently connected
           const statuses = {};
           servers.forEach(server => {
-            // Check if there are tools from this server
             const hasToolsFromServer = tools.some(tool => tool.serverId === server.id);
             statuses[server.id] = hasToolsFromServer ? 'connected' : 'disconnected';
           });
@@ -50,37 +49,7 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
     loadConfiguredServers();
   }, [tools]);
 
-  // Listener for auth reconnect completion events from main process
-  useEffect(() => {
-    const removeListener = window.electron.onMcpAuthReconnectComplete?.((data) => {
-      console.log('Received mcp-auth-reconnect-complete:', data);
-      // Clear the action in progress only if it matches the completed server
-      if (data && actionInProgress === data.serverId) {
-        setActionInProgress(null);
-        if (!data.success) {
-             // Optionally show an error toast if reconnect failed after auth
-             console.error(`Auth reconnect failed for ${data.serverId}: ${data.error}`);
-             // Keep server disconnected, potentially reset authRequired flag?
-             // setAuthRequiredServers(prev => ({ ...prev, [data.serverId]: true }));
-        } else {
-            // Success state is handled by the main status update driven by notifyMcpServerStatus
-            // but we should clear the authRequired flag here
-            setAuthRequiredServers(prev => {
-                 const newState = { ...prev };
-                 delete newState[data.serverId];
-                 return newState;
-            });
-        }
-      }
-    });
-
-    // Cleanup listener on unmount
-    return () => {
-      if (removeListener) removeListener();
-    };
-  }, [actionInProgress]); // Depend on actionInProgress to ensure correct serverId check
-
-  // Add event listener for ESC key
+  // Add event listeners for ESC key and click outside
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key === 'Escape' && onClose) {
@@ -88,88 +57,76 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
       }
     };
 
+    const handleClickOutside = (event) => {
+      if (panelRef.current && !panelRef.current.contains(event.target)) {
+        // Check if click is on the tools button itself
+        const isToolsButton = event.target.closest('.control-button');
+        if (!isToolsButton) {
+          onClose();
+        }
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
     
-    // Clean up the event listener when the component unmounts
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [onClose]);
 
-  const toggleToolExpand = (toolName) => {
-    setExpandedTools(prev => ({
+  const handleToggleConnection = async (server) => {
+    const isConnected = serverStatuses[server.id] === 'connected';
+    
+    setActionInProgress(server.id);
+    try {
+      if (isConnected) {
+        const success = await onDisconnectServer(server.id);
+        if (success) {
+          setServerStatuses(prev => ({ ...prev, [server.id]: 'disconnected' }));
+        }
+      } else {
+        const result = await onReconnectServer(server.id);
+        if (result && result.success) {
+          setServerStatuses(prev => ({ ...prev, [server.id]: 'connected' }));
+        }
+      }
+    } catch (error) {
+      console.error(`Error toggling connection for ${server.id}:`, error);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const toggleServerExpand = (serverId) => {
+    setExpandedServers(prev => ({
+      ...prev,
+      [serverId]: !prev[serverId]
+    }));
+  };
+
+  const toggleToolDisabled = (toolName) => {
+    setDisabledTools(prev => ({
       ...prev,
       [toolName]: !prev[toolName]
     }));
   };
 
-  const handleDisconnect = async (serverId) => {
-    if (!onDisconnectServer || serverStatuses[serverId] !== 'connected') return;
+  const toggleAllTools = () => {
+    const allTools = tools.map(t => t.name);
+    const allDisabled = allTools.every(name => disabledTools[name]);
     
-    setActionInProgress(serverId);
-    try {
-      const success = await onDisconnectServer(serverId);
-      if (success) {
-        setServerStatuses(prev => ({ ...prev, [serverId]: 'disconnected' }));
-      }
-    } catch (error) {
-      console.error(`Error disconnecting from server ${serverId}:`, error);
-    } finally {
-      setActionInProgress(null);
-    }
-  };
-
-  const handleReconnect = async (serverId) => {
-    if (!onReconnectServer || serverStatuses[serverId] !== 'disconnected') return;
-    
-    setActionInProgress(serverId);
-    try {
-      const result = await onReconnectServer(serverId);
-
-      if (result && result.requiresAuth) {
-        console.warn(`Authorization required for server ${serverId}.`);
-        setAuthRequiredServers(prev => ({ ...prev, [serverId]: true }));
-        setServerStatuses(prev => ({ ...prev, [serverId]: 'disconnected' })); // Keep disconnected
-        // Optionally: show a toast/notification to the user
-      } else if (result && result.success) {
-        console.log(`Successfully reconnected to server ${serverId}.`);
-        setAuthRequiredServers(prev => {
-          const newState = { ...prev };
-          delete newState[serverId];
-          return newState;
-        });
-        setServerStatuses(prev => ({ ...prev, [serverId]: 'connected' }));
-      } else {
-        // Handle explicit failure or unexpected result structure
-        console.error(`Failed to reconnect to server ${serverId}:`, result?.error || 'Unknown reason');
-        setServerStatuses(prev => ({ ...prev, [serverId]: 'disconnected' })); // Ensure disconnected
-      }
-    } catch (error) {
-      console.error(`Error during reconnect handler for ${serverId}:`, error);
-      setServerStatuses(prev => ({ ...prev, [serverId]: 'disconnected' })); // Ensure disconnected on catch
-    } finally {
-      setActionInProgress(null);
-    }
-  };
-
-  const handleAuthorizeServer = async (serverId) => {
-    const server = configuredServers.find(s => s.id === serverId);
-    if (!server || server.transport === 'stdio' || !server.url) { // Only allow for SSE with URL
-        console.error("Cannot start auth flow: server config is not SSE or URL missing for", serverId);
-        // Show error message to user?
-        return;
-    }
-    console.log(`Starting authorization flow for server ${serverId} at ${server.url}...`);
-    setActionInProgress(serverId); // Show loading/indicator on the button
-    try {
-        // Send IPC message to main process
-        await window.electron.startMcpAuthFlow({ serverId: server.id, serverUrl: server.url });
-        console.log(`Authorization flow initiated for ${serverId}. Please follow browser instructions.`);
-        // Keep actionInProgress until user tries to reconnect or main process sends completion signal
-    } catch (error) {
-        console.error(`Error initiating auth flow for ${serverId}:`, error);
-        // Show error message to user?
-        setActionInProgress(null);
+    if (allDisabled) {
+      // Enable all
+      setDisabledTools({});
+    } else {
+      // Disable all
+      const newDisabled = {};
+      allTools.forEach(name => {
+        newDisabled[name] = true;
+      });
+      setDisabledTools(newDisabled);
     }
   };
 
@@ -183,193 +140,155 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
     return acc;
   }, {});
 
-  // Servers with no tools (disconnected)
-  const disconnectedServers = configuredServers
-    .filter(server => !toolsByServer[server.id])
-    .map(server => server.id);
+  const getServerIcon = (serverId) => {
+    // Map server IDs to letters (no emojis)
+    const iconMap = {
+      'Context7': 'C',
+      'Notes': 'N',
+      'Chrome': 'C',
+      'n8n-mcp': 'N',
+      'bmad': 'B',
+      'claude-mcp': 'C',
+      'desktop-commander': 'D',
+      'browsermcp': 'B',
+      'mcp-server-firecrawl': 'M',
+      'shopify-dev-mcp': 'S',
+      'XcodeBuildMCP': 'X'
+    };
+    
+    const icon = iconMap[serverId] || serverId.charAt(0).toUpperCase();
+    return <span className="server-icon-letter">{icon}</span>;
+  };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
-      <div className="bg-gray-800 w-full max-w-3xl max-h-[80vh] rounded-lg shadow-lg overflow-hidden flex flex-col">
-        <div className="p-4 border-b border-gray-700 flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-white">Available Tools ({tools.length})</h2>
-          <button 
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-200"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+    <div className="tools-panel-overlay">
+      <div className="tools-panel-minimal" ref={panelRef}>
+        <div className="tools-panel-header">
+          <span className="text-text-secondary text-xs font-medium uppercase tracking-wide">Tools</span>
         </div>
         
-        <div className="flex-1 overflow-y-auto p-4">
-          {/* Show configured servers section */}
-          {configuredServers.length > 0 && (
-            <div className="mb-6">
-              <h3 className="text-md font-semibold text-white mb-2">Configured MCP Servers</h3>
-              <div className="border border-gray-700 rounded-md overflow-hidden mb-4">
-                {configuredServers.map(server => (
-                  <div key={server.id} className="p-3 border-b border-gray-700 last:border-b-0 bg-gray-900 flex justify-between items-center">
-                    <div>
-                      <div className="font-medium text-gray-300 flex items-center">
-                        {server.id}
-                        <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${
-                          serverStatuses[server.id] === 'connected' 
-                            ? 'bg-green-500' 
-                            : 'bg-red-500'
-                        }`}>
-                          {serverStatuses[server.id] === 'connected' ? 'Connected' : 'Disconnected'}
-                        </span>
-                      </div>
-                      <div className="text-sm text-gray-500 mt-1">
-                        {server.transport === 'sse' ? (
-                          <div><span className="font-mono">Type: SSE | URL: {server.url || 'N/A'}</span></div>
-                        ) : server.transport === 'streamableHttp' ? (
-                          <div><span className="font-mono">Type: Streamable HTTP | URL: {server.url || 'N/A'}</span></div>
-                        ) : (
-                          <div><span className="font-mono">Type: Stdio | $ {server.command || 'N/A'} {server.args.join(' ')}</span></div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex space-x-2 flex-shrink-0 ml-4">
-                      {serverStatuses[server.id] === 'connected' && (
-                        <button
-                          onClick={() => setViewingLogsForServer({ id: server.id, transport: server.transport })}
-                          disabled={actionInProgress === server.id}
-                          className="text-gray-600 hover:text-gray-800 text-sm py-1 px-2 bg-gray-200 hover:bg-gray-300 rounded disabled:opacity-50"
-                          title="View Logs"
-                        >
-                          Logs
-                        </button>
-                      )}
-                      {serverStatuses[server.id] === 'connected' ? (
-                        <button
-                          onClick={() => handleDisconnect(server.id)}
-                          disabled={actionInProgress === server.id}
-                          className="text-red-600 hover:text-red-800 text-sm py-1 px-2 bg-red-100 hover:bg-red-200 rounded disabled:opacity-50"
-                        >
-                          {actionInProgress === server.id ? 'Disconnecting...' : 'Disconnect'}
-                        </button>
-                      ) : (
-                        authRequiredServers[server.id] ? (
-                          <button
-                            onClick={() => handleAuthorizeServer(server.id)}
-                            disabled={actionInProgress === server.id}
-                            className="text-yellow-600 hover:text-yellow-800 text-sm py-1 px-2 bg-yellow-100 hover:bg-yellow-200 rounded disabled:opacity-50"
-                          >
-                            {actionInProgress === server.id ? 'Authorizing...' : 'Authorize'}
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleReconnect(server.id)}
-                            disabled={actionInProgress === server.id}
-                            className="text-green-600 hover:text-green-800 text-sm py-1 px-2 bg-green-100 hover:bg-green-200 rounded disabled:opacity-50"
-                          >
-                            {actionInProgress === server.id ? 'Connecting...' : 'Reconnect'}
-                          </button>
-                        )
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-gray-500 italic">
-                These servers are automatically started when the application launches.
-                You can manage them in the settings.
-              </p>
+        <div className="tools-panel-content">
+          {tools.length > 0 && (
+            <div className="disable-all-section">
+              <button onClick={toggleAllTools} className="disable-all-button">
+                <span className="server-icon-letter">R</span>
+                <span className="flex-1 text-left">Disable all tools</span>
+                <div className="toggle-switch">
+                  <input 
+                    type="checkbox" 
+                    checked={!tools.every(t => disabledTools[t.name])}
+                    onChange={toggleAllTools}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <span className="toggle-slider"></span>
+                </div>
+              </button>
             </div>
           )}
-        
-          {/* Available tools section */}
-          <h3 className="text-md font-semibold text-white mb-2">Available Tools by Server</h3>
-          {Object.keys(toolsByServer).length === 0 ? (
-            <p className="text-gray-400 text-center">No tools available. All configured servers are disconnected.</p>
+
+          {configuredServers.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-text-tertiary text-sm">No MCP servers configured</p>
+              <p className="text-text-tertiary text-xs mt-1">Add servers in Settings</p>
+            </div>
           ) : (
-            <div className="space-y-6">
-              {Object.entries(toolsByServer).map(([serverId, serverTools]) => (
-                <div key={serverId} className="border border-gray-700 rounded-lg overflow-hidden">
-                  <div className="p-3 bg-gray-600 flex justify-between items-center">
-                    <h3 className="font-medium text-white">
-                      Server: {serverId} ({serverTools.length} tools)
-                    </h3>
-                    {serverId !== 'unknown' && serverStatuses[serverId] === 'connected' && (
-                      <button
-                        onClick={() => handleDisconnect(serverId)}
-                        disabled={actionInProgress === serverId}
-                        className="text-sm text-red-600 hover:text-red-800 py-1 px-2 bg-red-100 hover:bg-red-200 rounded disabled:opacity-50"
+            <div className="servers-list">
+              {configuredServers.map(server => {
+                const isConnected = serverStatuses[server.id] === 'connected';
+                const isExpanded = expandedServers[server.id];
+                const serverTools = toolsByServer[server.id] || [];
+                
+                return (
+                  <div key={server.id} className="server-section">
+                    <button
+                      onClick={() => toggleServerExpand(server.id)}
+                      className="server-header-button"
+                    >
+                      <div className="flex items-center gap-2 flex-1">
+                        <span className="server-icon">{getServerIcon(server.id)}</span>
+                        <span className="server-name">{server.id}</span>
+                        {!isConnected && (
+                          <span className="server-status-text">Disabled</span>
+                        )}
+                        {isConnected && serverTools.length > 0 && (
+                          <span className="server-tool-count">{serverTools.length}</span>
+                        )}
+                      </div>
+                      <svg 
+                        className={`chevron-icon w-3 h-3 ${isExpanded ? 'expanded' : ''}`} 
+                        viewBox="0 0 24 24" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        strokeWidth="2"
                       >
-                        {actionInProgress === serverId ? 'Disconnecting...' : 'Disconnect'}
-                      </button>
+                        <path d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="server-tools-list">
+                        {!isConnected ? (
+                          <div className="disconnected-message">
+                            <p className="text-xs text-text-tertiary mb-2">Server is disconnected</p>
+                            <button
+                              onClick={() => handleToggleConnection(server)}
+                              disabled={actionInProgress === server.id}
+                              className="connect-button"
+                            >
+                              {actionInProgress === server.id ? 'Connecting...' : 'Connect'}
+                            </button>
+                          </div>
+                        ) : serverTools.length === 0 ? (
+                          <p className="text-xs text-text-tertiary p-3">No tools available</p>
+                        ) : (
+                          serverTools.map(tool => (
+                            <div key={tool.name} className="tool-item">
+                              <button
+                                onClick={() => toggleToolDisabled(tool.name)}
+                                className="tool-toggle-button"
+                              >
+                                <span className="tool-icon">{tool.name.charAt(0).toUpperCase()}</span>
+                                <span className="tool-name">{tool.name}</span>
+                                <div className="toggle-switch">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={!disabledTools[tool.name]}
+                                    onChange={() => toggleToolDisabled(tool.name)}
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                  <span className="toggle-slider"></span>
+                                </div>
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     )}
                   </div>
-                  
-                  <div className="p-2 space-y-2">
-                    {serverTools.map((tool) => (
-                      <div 
-                        key={tool.name} 
-                        className="border border-gray-700 rounded-lg overflow-hidden"
-                      >
-                        <div 
-                          className="p-3 bg-gray-700 flex justify-between items-center cursor-pointer"
-                          onClick={() => toggleToolExpand(tool.name)}
-                        >
-                          <div>
-                            <h3 className="font-medium text-white">{tool.name}</h3>
-                            <p className="text-sm text-gray-400">
-                              {tool.description?.substring(0, 100)}
-                              {tool.description?.length > 100 ? '...' : ''}
-                            </p>
-                          </div>
-                          <span className="text-gray-400">
-                            {expandedTools[tool.name] ? '▼' : '▶'}
-                          </span>
-                        </div>
-                        
-                        {expandedTools[tool.name] && (
-                          <div className="p-3 border-t border-gray-700">
-                            <div className="mb-2">
-                              <h4 className="font-medium text-sm text-gray-300 mb-1">Full Description:</h4>
-                              <p className="text-gray-400 whitespace-pre-wrap">{tool.description}</p>
-                            </div>
-                            
-                            <div>
-                              <h4 className="font-medium text-sm text-gray-300 mb-1">Input Schema:</h4>
-                              <pre className="bg-gray-900 p-2 rounded overflow-x-auto text-xs">
-                                {JSON.stringify(tool.input_schema, null, 2)}
-                              </pre>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
+          
+          <div className="tools-panel-footer">
+            <button 
+              onClick={(e) => {
+                e.preventDefault();
+                onClose();
+                navigate('/settings');
+              }}
+              className="add-connectors-link"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 5v14m-7-7h14" />
+              </svg>
+              Add MCP Server
+            </button>
+          </div>
         </div>
-        
-        <div className="p-4 border-t border-gray-700">
-          <button
-            onClick={onClose}
-            className="w-full py-2 px-4 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
-          >
-            Close
-          </button>
-        </div>
-
-        {viewingLogsForServer && (
-          <LogViewerModal 
-            serverId={viewingLogsForServer.id} 
-            transportType={viewingLogsForServer.transport}
-            onClose={() => setViewingLogsForServer(null)}
-          />
-        )}
-
       </div>
     </div>
   );
 }
 
-export default ToolsPanel; 
+export default ToolsPanel;

@@ -77,5 +77,21 @@ contextBridge.exposeInMainWorld('electron', {
     return () => ipcRenderer.removeListener('mcp-auth-reconnect-complete', listener);
   },
 
+  // Session Management
+  selectWorkingDirectory: () => ipcRenderer.invoke('select-working-directory'),
+  getCurrentDirectory: () => ipcRenderer.invoke('get-current-directory'),
+  setWorkingDirectory: (directory) => ipcRenderer.invoke('set-working-directory', directory),
+  createNewSession: () => ipcRenderer.invoke('create-new-session'),
+  getCurrentSession: () => ipcRenderer.invoke('get-current-session'),
+  saveMessage: (message) => ipcRenderer.invoke('save-message', message),
+  saveToolCall: (toolCall) => ipcRenderer.invoke('save-tool-call', toolCall),
+  saveToolResult: (toolName, result) => ipcRenderer.invoke('save-tool-result', toolName, result),
+  loadSession: (sessionFile) => ipcRenderer.invoke('load-session', sessionFile),
+  listSessions: () => ipcRenderer.invoke('list-sessions'),
+  deleteSession: (sessionFile) => ipcRenderer.invoke('delete-session', sessionFile),
+  exportSession: (sessionFile) => ipcRenderer.invoke('export-session', sessionFile),
+  getRecentProjects: () => ipcRenderer.invoke('get-recent-projects'),
+  getGroqProjectsDir: () => ipcRenderer.invoke('get-groq-projects-dir'),
+
   // Other?
 }); 

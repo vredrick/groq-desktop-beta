@@ -106,6 +106,9 @@ function saveToolCall(sessionFile, toolCall) {
         const toolData = {
             timestamp: new Date().toISOString(),
             type: 'tool_call',
+            id: toolCall.id,
+            name: toolCall.function?.name || toolCall.name,
+            arguments: toolCall.function?.arguments || toolCall.arguments,
             ...toolCall
         };
         
@@ -118,14 +121,25 @@ function saveToolCall(sessionFile, toolCall) {
 }
 
 // Save a tool result to the session file
-function saveToolResult(sessionFile, toolName, result) {
+function saveToolResult(sessionFile, toolName, result, toolCallId = null) {
     try {
+        if (!toolCallId) {
+            console.warn('WARNING: Saving tool result without tool_call_id - this will break session loading!');
+        }
+        
         const resultData = {
             timestamp: new Date().toISOString(),
             type: 'tool_result',
             tool: toolName,
-            result: result
+            result: result,
+            tool_call_id: toolCallId || null
         };
+        
+        console.log('Saving tool result:', { 
+            toolName, 
+            toolCallId: toolCallId || 'MISSING!', 
+            resultLength: result?.length 
+        });
         
         fs.appendFileSync(sessionFile, JSON.stringify(resultData) + '\n', 'utf8');
         return true;

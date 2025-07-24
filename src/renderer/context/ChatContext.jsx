@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import { createContext, useState, useContext, useEffect, useCallback } from 'react';
 
 // Create the context
 const ChatContext = createContext();
@@ -74,23 +74,15 @@ export const ChatProvider = ({ children }) => {
     }
   }, [workingDirectory, currentSessionFile]);
 
-  // Save tool call to session
-  const saveToolCallToSession = useCallback(async (toolCall) => {
-    if (!workingDirectory || !currentSessionFile) return;
-    
-    try {
-      await window.electron.saveToolCall(toolCall);
-    } catch (error) {
-      console.error('Error saving tool call to session:', error);
-    }
-  }, [workingDirectory, currentSessionFile]);
+  // Tool calls are now saved as part of assistant messages, not separately
+  // Removed saveToolCallToSession to prevent duplicate saving
 
   // Save tool result to session
-  const saveToolResultToSession = useCallback(async (toolName, result) => {
+  const saveToolResultToSession = useCallback(async (toolName, result, toolCallId) => {
     if (!workingDirectory || !currentSessionFile) return;
     
     try {
-      await window.electron.saveToolResult(toolName, result);
+      await window.electron.saveToolResult(toolName, result, toolCallId);
     } catch (error) {
       console.error('Error saving tool result to session:', error);
     }
@@ -104,30 +96,77 @@ export const ChatProvider = ({ children }) => {
       if (result.success) {
         // Convert session data to messages format
         const loadedMessages = [];
-        let pendingToolCalls = [];
+        const toolCallsMap = new Map(); // Map tool call IDs to tool calls
+        const toolResultsMap = new Map(); // Map tool call IDs to results
+        
+        // First pass: collect all tool results
+        console.log('Loading session with', result.messages.length, 'entries');
+        const orphanedToolResults = []; // Store tool results without IDs
         
         for (const item of result.messages) {
+          if (item.type === 'tool_result') {
+            console.log('Found tool result:', { 
+              tool: item.tool, 
+              tool_call_id: item.tool_call_id,
+              resultLength: item.result?.length 
+            });
+            
+            if (item.tool_call_id) {
+              toolResultsMap.set(item.tool_call_id, item);
+            } else {
+              console.warn('Tool result without tool_call_id - will try to match by position');
+              orphanedToolResults.push(item);
+            }
+          }
+        }
+        console.log('Tool results collected:', toolResultsMap.size, 'orphaned:', orphanedToolResults.length);
+        
+        // Second pass: reconstruct messages
+        for (const item of result.messages) {
           if (item.type === 'message') {
-            // Regular message (user or assistant)
-            loadedMessages.push({
+            const message = {
               role: item.role,
               content: item.content,
               ...(item.tool_calls && { tool_calls: item.tool_calls }),
               ...(item.reasoning && { reasoning: item.reasoning })
-            });
-          } else if (item.type === 'tool_call') {
-            // Store tool call for later processing
-            pendingToolCalls.push(item);
-          } else if (item.type === 'tool_result') {
-            // Match tool result with its call
-            const matchingCall = pendingToolCalls.find(tc => tc.name === item.tool);
-            if (matchingCall) {
-              // Add tool result as a message
-              loadedMessages.push({
-                role: 'tool',
-                content: item.result,
-                tool_call_id: matchingCall.id || `tool_${Date.now()}`
-              });
+            };
+            
+            // Add the message
+            loadedMessages.push(message);
+            
+            // If this is an assistant message with tool calls, add the corresponding tool results
+            if (item.role === 'assistant' && item.tool_calls && item.tool_calls.length > 0) {
+              console.log(`Assistant message has ${item.tool_calls.length} tool calls:`, 
+                item.tool_calls.map(tc => ({ id: tc.id, name: tc.function?.name }))
+              );
+              
+              for (let i = 0; i < item.tool_calls.length; i++) {
+                const toolCall = item.tool_calls[i];
+                const toolResult = toolResultsMap.get(toolCall.id);
+                
+                if (toolResult) {
+                  console.log(`Found tool result for ${toolCall.id}`);
+                  loadedMessages.push({
+                    role: 'tool',
+                    content: toolResult.result,
+                    tool_call_id: toolCall.id
+                  });
+                } else if (orphanedToolResults.length > 0) {
+                  // Try to match orphaned tool results by position
+                  console.warn(`No tool result found for tool call ${toolCall.id} (${toolCall.function?.name}), attempting to match by position`);
+                  const orphanedResult = orphanedToolResults.shift(); // Take the first orphaned result
+                  if (orphanedResult) {
+                    console.log(`Matched orphaned tool result to tool call ${toolCall.id}`);
+                    loadedMessages.push({
+                      role: 'tool',
+                      content: orphanedResult.result,
+                      tool_call_id: toolCall.id // Assign the ID from the tool call
+                    });
+                  }
+                } else {
+                  console.warn(`No tool result found for tool call ${toolCall.id} (${toolCall.function?.name})`);
+                }
+              }
             }
           }
         }
@@ -247,7 +286,6 @@ export const ChatProvider = ({ children }) => {
     isLoadingSession,
     // Session methods
     saveMessageToSession,
-    saveToolCallToSession,
     saveToolResultToSession,
     loadSessionFromFile,
     startNewSession,

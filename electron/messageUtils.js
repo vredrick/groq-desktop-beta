@@ -16,7 +16,16 @@ function pruneMessageHistory(messages, model, modelContextSizes) {
   // Get context window size for the selected model, default if unknown
   const modelInfo = modelContextSizes[model] || modelContextSizes['default'] || { context: 8192 }; // Ensure default
   const contextWindow = modelInfo.context;
-  const targetTokenCount = Math.floor(contextWindow * 0.5); // Use 50% of context window
+  
+  // Use more of the context window for models with large contexts
+  let contextUsageRatio = 0.5; // Default to 50%
+  if (contextWindow >= 100000) {
+    contextUsageRatio = 0.8; // Use 80% for models with 100k+ context
+  } else if (contextWindow >= 32000) {
+    contextUsageRatio = 0.7; // Use 70% for models with 32k+ context
+  }
+  
+  const targetTokenCount = Math.floor(contextWindow * contextUsageRatio);
 
   // Create a copy to avoid modifying the original array
   let prunedMessages = [...messages];
@@ -76,20 +85,84 @@ function pruneMessageHistory(messages, model, modelContextSizes) {
   // Keep track of text-based pruned messages
   let messagesPrunedCount = 0;
 
-  // Start pruning from index 1 (second message, as index 0 is system/first user) and continue until we're under the target
-  // Preserve index 0 (system/first user) and the last message
-  while (prunedMessages.length > 2 && currentTotalTokens > targetTokenCount) {
-    // Index 1 is the candidate for removal (oldest non-system/first message)
-    const messageToRemove = prunedMessages[1];
+  // Smart pruning: Keep system message, keep last user message and its responses
+  // Find the last user message
+  let lastUserIndex = -1;
+  for (let i = prunedMessages.length - 1; i >= 0; i--) {
+    if (prunedMessages[i].role === 'user') {
+      lastUserIndex = i;
+      break;
+    }
+  }
 
-    // Don't remove the very last message
-    if (prunedMessages.length <= 2) break; // Should be caught by loop condition, but safety first
+  // Keep messages that are critical for context
+  const messagesToKeep = new Set([0]); // Always keep system message
+  
+  // Keep the last user message and all messages after it
+  if (lastUserIndex >= 0) {
+    for (let i = lastUserIndex; i < prunedMessages.length; i++) {
+      messagesToKeep.add(i);
+    }
+  }
 
+  // For tool messages, try to keep the corresponding assistant message with tool_calls
+  prunedMessages.forEach((msg, idx) => {
+    if (msg.role === 'tool' && msg.tool_call_id) {
+      // Find the assistant message that made this tool call
+      for (let i = idx - 1; i >= 0; i--) {
+        const prevMsg = prunedMessages[i];
+        if (prevMsg.role === 'assistant' && prevMsg.tool_calls?.some(tc => tc.id === msg.tool_call_id)) {
+          messagesToKeep.add(i); // Keep the assistant message that called this tool
+          break;
+        }
+      }
+    }
+  });
+
+  // Build list of removable messages (oldest first, excluding protected messages)
+  const removableIndices = [];
+  for (let i = 1; i < prunedMessages.length; i++) { // Skip system message at index 0
+    if (!messagesToKeep.has(i)) {
+      removableIndices.push(i);
+    }
+  }
+
+  // Remove messages starting from oldest until we're under target
+  while (removableIndices.length > 0 && currentTotalTokens > targetTokenCount) {
+    const indexToRemove = removableIndices.shift();
+    const messageToRemove = prunedMessages[indexToRemove];
     const tokensForMessage = estimateTokenCount(messageToRemove);
-    prunedMessages.splice(1, 1);
+    
+    // Mark for removal (we'll remove in reverse order later to maintain indices)
+    messageToRemove._markedForRemoval = true;
     currentTotalTokens -= tokensForMessage;
     messagesPrunedCount++;
-    // console.log(`Pruned message at index 1 (was role ${messageToRemove.role}). New count: ${prunedMessages.length}, Tokens: ${currentTotalTokens}`);
+  }
+
+  // Remove marked messages
+  prunedMessages = prunedMessages.filter(msg => !msg._markedForRemoval);
+
+  // If we're still over the limit, truncate large tool results
+  if (currentTotalTokens > targetTokenCount) {
+    console.log(`Still over token limit after pruning. Truncating large tool results...`);
+    prunedMessages = prunedMessages.map(msg => {
+      if (msg.role === 'tool' && msg.content) {
+        const contentLength = msg.content.length;
+        const maxLength = 10000; // Max characters for tool results
+        
+        if (contentLength > maxLength) {
+          console.log(`Truncating tool result from ${contentLength} to ${maxLength} characters`);
+          return {
+            ...msg,
+            content: msg.content.substring(0, maxLength) + "\n\n[Tool result truncated due to length. Original length: " + contentLength + " characters]"
+          };
+        }
+      }
+      return msg;
+    });
+    
+    // Recalculate tokens after truncation
+    currentTotalTokens = prunedMessages.reduce((sum, msg) => sum + estimateTokenCount(msg), 0);
   }
 
   if (messagesPrunedCount > 0) {

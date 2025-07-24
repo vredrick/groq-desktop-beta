@@ -87,7 +87,7 @@ contextBridge.exposeInMainWorld('electron', {
   getCurrentSession: () => ipcRenderer.invoke('get-current-session'),
   saveMessage: (message) => ipcRenderer.invoke('save-message', message),
   saveToolCall: (toolCall) => ipcRenderer.invoke('save-tool-call', toolCall),
-  saveToolResult: (toolName, result) => ipcRenderer.invoke('save-tool-result', toolName, result),
+  saveToolResult: (toolName, result, toolCallId) => ipcRenderer.invoke('save-tool-result', toolName, result, toolCallId),
   loadSession: (sessionFile) => ipcRenderer.invoke('load-session', sessionFile),
   listSessions: () => ipcRenderer.invoke('list-sessions'),
   deleteSession: (sessionFile) => ipcRenderer.invoke('delete-session', sessionFile),

@@ -24,8 +24,12 @@ xattr -c /Applications/Groq\ Desktop.app
 
 ## Features
 
-- Chat interface with image support
-- Local MCP servers
+- Chat interface with image support for vision-capable models
+- Local MCP (Model Context Protocol) server integration
+- Tool execution with user approval workflow
+- Session persistence and history
+- Multiple AI provider support (Groq, OpenRouter, Custom)
+- Customizable system prompts and generation parameters
 
 ## Prerequisites
 
@@ -106,4 +110,34 @@ In the settings page, add your Groq API key:
 }
 ```
 
-You can obtain a Groq API key by signing up at [https://console.groq.com](https://console.groq.com). 
+You can obtain a Groq API key by signing up at [https://console.groq.com](https://console.groq.com).
+
+## Architecture
+
+The application follows a modular architecture with clear separation of concerns:
+
+- **Main Process** (`electron/`): Handles API communication, tool execution, and session management
+- **Renderer Process** (`src/renderer/`): React-based UI with custom hooks for state management
+- **State Machine**: Complex chat flows managed by `ChatFlowStateMachine` for predictable behavior
+- **MCP Integration**: Dynamic tool discovery and execution through Model Context Protocol
+
+For detailed architecture documentation, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+
+## Recent Updates
+
+### Refactored Architecture (Latest)
+- Reduced main App.jsx from ~1000 to ~160 lines through modular design
+- Implemented state machine pattern for chat flow management
+- Created custom hooks for different concerns (chat flow, model selection, MCP servers)
+- Improved session loading to handle orphaned tool results
+- Fixed tool result persistence with proper tool_call_id tracking
+
+### Key Components
+- `useChatFlow`: Orchestrates chat conversations and tool execution
+- `useModelSelection`: Manages AI model selection and capabilities
+- `useMcpServers`: Handles MCP server connections and tool discovery
+- `ChatFlowStateMachine`: Ensures predictable state transitions during chat
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request. 

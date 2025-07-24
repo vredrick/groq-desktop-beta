@@ -247,7 +247,7 @@ app.whenReady().then(async () => {
   });
 
   // Save tool result to session
-  ipcMain.handle('save-tool-result', async (event, toolName, result) => {
+  ipcMain.handle('save-tool-result', async (event, toolName, result, toolCallId) => {
     if (!currentWorkingDirectory) {
       return { success: false, message: 'No working directory selected' };
     }
@@ -255,7 +255,7 @@ app.whenReady().then(async () => {
     try {
       const projectDir = sessionManager.getProjectSessionDir(currentWorkingDirectory);
       const sessionFile = sessionManager.getCurrentSession(projectDir);
-      const saved = sessionManager.saveToolResult(sessionFile, toolName, result);
+      const saved = sessionManager.saveToolResult(sessionFile, toolName, result, toolCallId);
       return { success: saved };
     } catch (error) {
       console.error('Error saving tool result:', error);

@@ -93,6 +93,7 @@ app.whenReady().then(async () => {
   ipcMain.on('chat-stream', async (event, messages, model) => {
     const currentSettings = loadSettings();
     const { discoveredTools } = mcpManager.getMcpState(); // Use module object
+    console.log(`[Main] chat-stream called. Model: ${model}, Messages: ${messages?.length}, DiscoveredTools: ${discoveredTools?.length}`, discoveredTools?.map(t => t.name));
     chatHandler.handleChatStream(event, messages, model, currentSettings, modelContextSizes, discoveredTools);
   });
 

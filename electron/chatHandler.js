@@ -100,6 +100,7 @@ async function handleChatStream(event, messages, model, settings, modelContextSi
         }
 
         // Prepare tools for the API call
+        console.log(`[ChatHandler] Raw discoveredTools:`, discoveredTools ? discoveredTools.length : 'undefined', discoveredTools);
         const tools = (discoveredTools || []).map(tool => ({
             type: "function",
             function: {
@@ -108,7 +109,7 @@ async function handleChatStream(event, messages, model, settings, modelContextSi
                 parameters: tool.input_schema || {} // Ensure parameters is an object
             }
         }));
-        console.log(`Prepared ${tools.length} tools for the API call.`);
+        console.log(`[ChatHandler] Prepared ${tools.length} tools for the API call. Tool names:`, tools.map(t => t.function.name));
 
         // Clean and prepare messages for the API
         // 1. Remove internal fields like 'reasoning', 'isStreaming'
@@ -183,6 +184,15 @@ async function handleChatStream(event, messages, model, settings, modelContextSi
             ...(tools.length > 0 && { tools: tools, tool_choice: "auto" }),
             stream: true
         };
+        
+        // Debug logging for tools
+        console.log(`[ChatHandler] Tools in API params:`, {
+            toolsIncluded: tools.length > 0,
+            toolCount: tools.length,
+            provider: settings.provider,
+            model: modelToUse,
+            toolsInParams: chatCompletionParams.tools ? chatCompletionParams.tools.length : 0
+        });
 
         // Add reasoning format if supported (adjust keywords as needed)
         // if (modelToUse.includes("qwq") || modelToUse.includes("r1")) {
@@ -201,7 +211,14 @@ async function handleChatStream(event, messages, model, settings, modelContextSi
                 let isFirstChunk = true;
                 let streamId = null;
 
-                console.log(`Attempting Groq completion (attempt ${retryCount + 1}/${MAX_TOOL_USE_RETRIES + 1})...`);
+                console.log(`Attempting ${settings.provider} completion (attempt ${retryCount + 1}/${MAX_TOOL_USE_RETRIES + 1})...`);
+                console.log(`[ChatHandler] Sending params to API:`, JSON.stringify({
+                    model: chatCompletionParams.model,
+                    hasTools: !!chatCompletionParams.tools,
+                    toolCount: chatCompletionParams.tools?.length,
+                    toolChoice: chatCompletionParams.tool_choice,
+                    messageCount: chatCompletionParams.messages.length
+                }, null, 2));
                 const stream = await client.chat.completions.create(chatCompletionParams);
 
                 for await (const chunk of stream) {

@@ -39,7 +39,8 @@ function notifyMcpServerStatus() {
       tools: [...discoveredTools], // Send a copy
       connectedServers: Object.keys(mcpClients)
     });
-     console.log('Notified renderer of MCP status change.');
+    console.log(`[MCPManager] Notified renderer of MCP status change. Tools: ${discoveredTools.length}, Servers: ${Object.keys(mcpClients).length}`);
+    console.log(`[MCPManager] Current tools:`, discoveredTools.map(t => ({ name: t.name, serverId: t.serverId })));
   } else {
       console.warn('Cannot notify renderer: mainWindow not available or destroyed.');
   }
@@ -579,6 +580,7 @@ function initializeMcpHandlers(ipcMain, app, mainWindow, loadSettings, resolveCo
 
 // Function to get current state (needed by main.js for other handlers)
 function getMcpState() {
+    console.log(`[MCPManager] getMcpState called. Tools: ${discoveredTools.length}, Clients: ${Object.keys(mcpClients).length}`);
     return {
         mcpClients,
         discoveredTools

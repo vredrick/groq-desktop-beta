@@ -2,9 +2,12 @@ const { app } = require('electron');
 const fs   = require('fs');
 const path = require('path');
 
-// Create ~/Library/Logs/Groq Desktop if it does not exist
-app.setAppLogsPath();
-const logFile = path.join(app.getPath('logs'), 'main.log');
+// Create ~/.groq/logs if it does not exist
+const logsDir = path.join(app.getPath('home'), '.groq', 'logs');
+if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir, { recursive: true });
+}
+const logFile = path.join(logsDir, 'main.log');
 const logStream = fs.createWriteStream(logFile, { flags: 'a' });
 
 // Mirror every console.* call to the file
@@ -23,6 +26,7 @@ const { BrowserWindow, ipcMain, screen, shell, dialog } = require('electron');
 
 // Import shared models
 const { MODEL_CONTEXT_SIZES } = require('../shared/models.js');
+const { OPENROUTER_MODELS } = require('../shared/openRouterModels.js');
 
 // Import handlers
 const chatHandler = require('./chatHandler');
@@ -31,6 +35,7 @@ const toolHandler = require('./toolHandler');
 // Import new manager modules
 const { initializeSettingsHandlers, loadSettings } = require('./settingsManager');
 const { initializeCommandResolver, resolveCommandPath } = require('./commandResolver');
+const configManager = require('./configManager');
 const mcpManager = require('./mcpManager');
 const { initializeWindowManager } = require('./windowManager');
 const authManager = require('./authManager');
@@ -101,8 +106,28 @@ app.whenReady().then(async () => {
 
   // Handler for getting model configurations
   ipcMain.handle('get-model-configs', async () => {
+      const settings = loadSettings();
+      let configs = modelContextSizes;
+      
+      if (settings.provider === 'openrouter') {
+          // For OpenRouter, combine predefined models with custom models
+          configs = { ...OPENROUTER_MODELS };
+          
+          // Add custom models
+          if (settings.openRouterCustomModels && Array.isArray(settings.openRouterCustomModels)) {
+              settings.openRouterCustomModels.forEach(modelId => {
+                  if (!configs[modelId]) {
+                      configs[modelId] = {
+                          ...OPENROUTER_MODELS.default,
+                          display_name: modelId
+                      };
+                  }
+              });
+          }
+      }
+      
       // Return a copy to prevent accidental modification
-      return JSON.parse(JSON.stringify(modelContextSizes));
+      return JSON.parse(JSON.stringify(configs));
   });
 
   // --- Auth IPC Handler ---

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useChat } from '../context/ChatContext';
 
 const SessionHistory = ({ isOpen, onClose }) => {
+  const navigate = useNavigate();
   const { 
     workingDirectory,
     currentSessionFile,
@@ -35,7 +37,6 @@ const SessionHistory = ({ isOpen, onClose }) => {
 
   const handleLoadSession = async (sessionFile) => {
     await loadSessionFromFile(sessionFile);
-    onClose();
   };
 
   const handleDeleteSession = async (sessionFile, e) => {
@@ -50,7 +51,6 @@ const SessionHistory = ({ isOpen, onClose }) => {
 
   const handleNewChat = async () => {
     await startNewSession();
-    onClose();
   };
 
   const formatDate = (date) => {
@@ -80,22 +80,14 @@ const SessionHistory = ({ isOpen, onClose }) => {
 
   return (
     <>
-      {/* Backdrop */}
-      {isOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-40"
-          onClick={onClose}
-        />
-      )}
-      
       {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 w-64 bg-gray-900 transform transition-transform duration-200 ease-in-out z-50 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <div className={`bg-bg-tertiary transition-all duration-200 ease-in-out overflow-hidden flex-shrink-0 border-r border-border-primary ${isOpen ? 'w-64' : 'w-0'}`}>
         <div className="flex flex-col h-full">
-          {/* Header */}
-          <div className="p-4 border-b border-gray-800">
+          {/* Header with New Chat button */}
+          <div className="p-3">
             <button
               onClick={handleNewChat}
-              className="w-full flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm text-white transition-colors"
+              className="w-full flex items-center gap-2 px-3 py-2 bg-surface-primary hover:bg-surface-hover rounded-lg text-sm text-white transition-colors"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -106,9 +98,34 @@ const SessionHistory = ({ isOpen, onClose }) => {
 
           {/* Navigation sections */}
           <div className="flex-1 overflow-y-auto">
+            {/* Main navigation */}
+            <nav className="px-2 py-2 space-y-1">
+              <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-300 hover:bg-surface-hover rounded-lg transition-colors">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                Chats
+              </button>
+              <button 
+                onClick={() => navigate('/projects')}
+                className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-300 hover:bg-surface-hover rounded-lg transition-colors">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                Projects
+              </button>
+              <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-300 hover:bg-surface-hover rounded-lg transition-colors">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Artifacts
+              </button>
+            </nav>
+            
+            {/* Recents section */}
             <div className="px-2 py-4">
-              <div className="px-2 py-1">
-                <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Chats</span>
+              <div className="px-3 py-1 mb-1">
+                <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Recents</span>
               </div>
               
               {/* Sessions list */}
@@ -130,10 +147,10 @@ const SessionHistory = ({ isOpen, onClose }) => {
                     <div
                       key={session.file}
                       onClick={() => handleLoadSession(session.path)}
-                      className={`group relative px-3 py-2 rounded cursor-pointer transition-colors ${
+                      className={`group relative px-3 py-2 rounded-lg cursor-pointer transition-colors ${
                         session.path === currentSessionFile
-                          ? 'bg-gray-800 text-white'
-                          : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                          ? 'bg-surface-secondary text-white'
+                          : 'text-gray-300 hover:bg-surface-hover hover:text-white'
                       }`}
                     >
                       <div className="flex items-center justify-between">
@@ -150,7 +167,7 @@ const SessionHistory = ({ isOpen, onClose }) => {
                         <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
                             onClick={(e) => handleDeleteSession(session.path, e)}
-                            className="p-1 hover:bg-gray-700 rounded"
+                            className="p-1 hover:bg-surface-tertiary rounded"
                             title="Delete"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -164,6 +181,20 @@ const SessionHistory = ({ isOpen, onClose }) => {
                 )}
               </div>
             </div>
+          </div>
+          
+          {/* Bottom section with settings */}
+          <div className="p-3 border-t border-border-primary">
+            <Link
+              to="/settings"
+              className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-300 hover:bg-surface-hover rounded-lg transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Settings
+            </Link>
           </div>
         </div>
       </div>

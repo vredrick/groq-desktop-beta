@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('electron', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   getSettingsPath: () => ipcRenderer.invoke('get-settings-path'),
+  getConfigDir: () => ipcRenderer.invoke('get-config-dir'),
+  openConfigDirectory: () => ipcRenderer.invoke('open-config-directory'),
   reloadSettings: () => ipcRenderer.invoke('reload-settings'),
   // Chat API - streaming only
   executeToolCall: (toolCall) => ipcRenderer.invoke('execute-tool-call', toolCall),
@@ -93,5 +95,10 @@ contextBridge.exposeInMainWorld('electron', {
   getRecentProjects: () => ipcRenderer.invoke('get-recent-projects'),
   getGroqProjectsDir: () => ipcRenderer.invoke('get-groq-projects-dir'),
 
-  // Other?
+  // Settings change listener
+  onSettingsChanged: (callback) => {
+    const listener = (event, settings) => callback(settings);
+    ipcRenderer.on('settings-changed', listener);
+    return () => ipcRenderer.removeListener('settings-changed', listener);
+  },
 }); 

@@ -4,7 +4,7 @@
   "description": "A simple Electron app with Groq API integration",
   "main": "electron/main.js",
   "type": "commonjs",
-  "packageManager": "pnpm@10.9.0",
+  "packageManager": "pnpm@10.13.1+sha512.37ebf1a5c7a30d5fabe0c5df44ee8da4c965ca0c5af3dbab28c3a1681b70a256218d05c81c9c0dcf767ef6b8551eb5b960042b9ed4300c59242336377e01cfad",
   "scripts": {
     "dev": "concurrently \"pnpm dev:vite\" \"pnpm dev:electron\"",
     "dev:vite": "vite",
@@ -32,6 +32,7 @@
     "electron-json-storage": "^4.6.0",
     "groq-sdk": "0.16.0",
     "node-fetch": "^2.6.6",
+    "openai": "^5.10.2",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-markdown": "^10.1.0",
@@ -81,11 +82,18 @@
       "category": "public.app-category.productivity"
     },
     "win": {
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "public/icon.png"
     },
     "linux": {
-      "target": ["AppImage", "deb", "rpm"],
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
       "category": "Development",
       "icon": "public/icon.png"
     }

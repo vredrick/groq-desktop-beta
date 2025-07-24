@@ -6,6 +6,7 @@ const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio
 const { SSEClientTransport } = require('@modelcontextprotocol/sdk/client/sse.js');
 const { StreamableHTTPClientTransport } = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
 const { getTokensForServer, getClientInfoForServer } = require('./authManager');
+const configManager = require('./configManager');
 
 // Custom Error for Auth Requirement
 class AuthorizationRequiredError extends Error {
@@ -467,10 +468,9 @@ function initializeMcpHandlers(ipcMain, app, mainWindow, loadSettings, resolveCo
         const settings = loadSettingsFunc();
         if (settings.disabledMcpServers?.includes(id)) {
             settings.disabledMcpServers = settings.disabledMcpServers.filter(serverId => serverId !== id);
-            const userDataPath = appInstance.getPath('userData');
-            const settingsPath = path.join(userDataPath, 'settings.json');
             try {
-                fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+                // Save updated MCP servers configuration
+                configManager.saveMcpServers(settings.mcpServers, settings.disabledMcpServers);
                 console.log(`Removed ${id} from disabled list.`);
             } catch (saveError) { console.error(`Failed to save settings after enabling ${id}:`, saveError); }
         }
@@ -529,10 +529,9 @@ function initializeMcpHandlers(ipcMain, app, mainWindow, loadSettings, resolveCo
             if (!settings.disabledMcpServers) settings.disabledMcpServers = [];
             if (!settings.disabledMcpServers.includes(serverId)) {
                 settings.disabledMcpServers.push(serverId);
-                const userDataPath = appInstance.getPath('userData');
-                const settingsPath = path.join(userDataPath, 'settings.json');
                 try {
-                    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+                    // Save updated MCP servers configuration
+                    configManager.saveMcpServers(settings.mcpServers, settings.disabledMcpServers);
                     console.log(`Added ${serverId} to disabled list.`);
                 } catch (saveError) { console.error(`Failed to save settings after disabling ${serverId}:`, saveError); }
             }

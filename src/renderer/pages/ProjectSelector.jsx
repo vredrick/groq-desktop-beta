@@ -68,16 +68,16 @@ const ProjectSelector = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center text-white">
+    <div className="min-h-screen bg-bg-primary flex flex-col items-center justify-center">
       <div className="w-full max-w-4xl px-8">
-        <h1 className="text-4xl font-bold text-center mb-2">Groq Desktop Projects</h1>
-        <p className="text-gray-400 text-center mb-12">Recent projects with Groq sessions</p>
+        <h1 className="text-4xl font-bold text-center mb-2 text-text-primary">Groq Desktop Projects</h1>
+        <p className="text-text-secondary text-center mb-12">Recent projects with Groq sessions</p>
 
         {/* New Project Button */}
         <button
           onClick={handleNewProject}
-          className="w-full mb-8 p-4 bg-gray-800 hover:bg-gray-700 rounded-lg border border-gray-700 
-                     flex items-center justify-center gap-2 transition-colors"
+          className="w-full mb-8 p-4 bg-surface-primary hover:bg-surface-hover rounded-lg border border-border-primary 
+                     flex items-center justify-center gap-2 transition-colors text-text-primary"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
@@ -88,14 +88,14 @@ const ProjectSelector = () => {
 
         {/* Recent Sessions Header */}
         {recentProjects.length > 0 && (
-          <h2 className="text-sm uppercase text-gray-500 tracking-wider mb-4">RECENT SESSIONS</h2>
+          <h2 className="text-sm uppercase text-text-tertiary tracking-wider mb-4">RECENT SESSIONS</h2>
         )}
 
         {/* Project List */}
         {isLoading ? (
-          <div className="text-center text-gray-400">Loading projects...</div>
+          <div className="text-center text-text-secondary">Loading projects...</div>
         ) : recentProjects.length === 0 ? (
-          <div className="text-center text-gray-400">
+          <div className="text-center text-text-secondary">
             No recent projects found. Click "New Project" to get started.
           </div>
         ) : (
@@ -104,21 +104,21 @@ const ProjectSelector = () => {
               <button
                 key={project.path}
                 onClick={() => handleProjectSelect(project.path)}
-                className="w-full p-4 bg-gray-800 hover:bg-gray-700 rounded-lg border border-gray-700 
+                className="w-full p-4 bg-surface-primary hover:bg-surface-hover rounded-lg border border-border-primary 
                          text-left transition-colors group"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-medium text-white group-hover:text-blue-400 transition-colors">
+                    <h3 className="text-lg font-medium text-text-primary group-hover:text-primary transition-colors">
                       {project.name}
                     </h3>
-                    <p className="text-sm text-gray-400 truncate">
+                    <p className="text-sm text-text-tertiary truncate">
                       {project.path}
                     </p>
                   </div>
-                  <div className="flex items-center gap-4 ml-4 text-sm text-gray-400">
+                  <div className="flex items-center gap-4 ml-4 text-sm text-text-tertiary">
                     <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
+                      <span className="w-2 h-2 bg-primary rounded-full"></span>
                       {project.sessionCount} session{project.sessionCount !== 1 ? 's' : ''}
                     </span>
                     <span>{formatTimeAgo(project.lastModified)}</span>
@@ -130,7 +130,7 @@ const ProjectSelector = () => {
         )}
 
         {/* Footer */}
-        <div className="mt-12 text-center text-sm text-gray-500">
+        <div className="mt-12 text-center text-sm text-text-tertiary">
           Groq Desktop · Select a project to continue
         </div>
       </div>

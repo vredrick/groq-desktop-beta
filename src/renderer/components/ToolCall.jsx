@@ -90,7 +90,7 @@ function ToolCall({ toolCall, toolResult }) {
             {/* Request Section */}
             <div>
               <div className="text-xs font-semibold text-text-tertiary uppercase tracking-wide mb-2">Request</div>
-              <div className="bg-code-bg border border-code-border rounded-lg p-3">
+              <div className="bg-surface-primary rounded-lg p-3">
                 <div className="text-xs text-text-secondary mb-1 font-mono">{`{}`}</div>
                 <div className="rounded-md text-sm overflow-x-auto">
                   <SyntaxHighlighter 
@@ -115,7 +115,7 @@ function ToolCall({ toolCall, toolResult }) {
             {/* Response Section */}
             <div>
               <div className="text-xs font-semibold text-text-tertiary uppercase tracking-wide mb-2">Response</div>
-              <div className="bg-code-bg border border-code-border rounded-lg p-3">
+              <div className="bg-surface-primary rounded-lg p-3">
                 {isPending && (
                   <div className="flex items-center gap-2 text-text-tertiary text-sm">
                     <div className="loading-spinner w-4 h-4"></div>

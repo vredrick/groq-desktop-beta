@@ -1,82 +1,85 @@
 const fs = require('fs');
 const path = require('path');
+const configManager = require('./configManager');
 
 let appInstance; // To store app instance for userData path
 
 // Helper function to load settings with defaults and validation
 function loadSettings() {
-    if (!appInstance) {
-        console.error("App instance not initialized in settingsManager.");
-        // Return minimal defaults to avoid crashing downstream logic
-        return {
-            GROQ_API_KEY: "<replace me>",
-            model: "llama-3.3-70b-versatile",
-            temperature: 0.7,
-            top_p: 0.95,
-            mcpServers: {},
-            disabledMcpServers: [],
-            customSystemPrompt: '',
-            customCompletionUrl: '',
-            toolOutputLimit: 8000
-        };
-    }
-    const userDataPath = appInstance.getPath('userData');
-    const settingsPath = path.join(userDataPath, 'settings.json');
     const defaultSettings = {
         GROQ_API_KEY: "<replace me>",
+        OPENROUTER_API_KEY: "<replace me>",
+        provider: "groq",
         model: "llama-3.3-70b-versatile",
         temperature: 0.7,
         top_p: 0.95,
-        mcpServers: {},
-        disabledMcpServers: [],
         customSystemPrompt: '',
         customCompletionUrl: '',
-        toolOutputLimit: 8000
+        toolOutputLimit: 8000,
+        openRouterCustomModels: []
     };
 
     try {
-        if (fs.existsSync(settingsPath)) {
-            const data = fs.readFileSync(settingsPath, 'utf8');
-            const loadedSettings = JSON.parse(data);
-
-            // Merge defaults and ensure required fields exist, applying defaults if necessary
-            const settings = { ...defaultSettings, ...loadedSettings };
-
-            // Explicitly check and apply defaults for potentially missing/undefined fields
+        // Load main settings from config manager
+        const mainSettings = configManager.loadSettings();
+        
+        // Load MCP servers from separate file
+        const { mcpServers, disabledMcpServers } = configManager.loadMcpServers();
+        
+        if (mainSettings) {
+            // Merge with defaults and MCP settings
+            const settings = {
+                ...defaultSettings,
+                ...mainSettings,
+                mcpServers,
+                disabledMcpServers
+            };
+            
+            // Ensure all required fields have values
             settings.GROQ_API_KEY = settings.GROQ_API_KEY || defaultSettings.GROQ_API_KEY;
+            settings.OPENROUTER_API_KEY = settings.OPENROUTER_API_KEY || defaultSettings.OPENROUTER_API_KEY;
+            settings.provider = settings.provider || defaultSettings.provider;
             settings.model = settings.model || defaultSettings.model;
-            settings.temperature = settings.temperature ?? defaultSettings.temperature; // Use nullish coalescing
+            settings.temperature = settings.temperature ?? defaultSettings.temperature;
             settings.top_p = settings.top_p ?? defaultSettings.top_p;
-            settings.mcpServers = settings.mcpServers || defaultSettings.mcpServers;
-            settings.disabledMcpServers = settings.disabledMcpServers || defaultSettings.disabledMcpServers;
             settings.customSystemPrompt = settings.customSystemPrompt || defaultSettings.customSystemPrompt;
             settings.customCompletionUrl = settings.customCompletionUrl || defaultSettings.customCompletionUrl;
             settings.toolOutputLimit = settings.toolOutputLimit ?? defaultSettings.toolOutputLimit;
-
-            // Optional: Persist the potentially updated settings back to file if defaults were applied
-            // fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-
+            settings.openRouterCustomModels = settings.openRouterCustomModels || defaultSettings.openRouterCustomModels;
+            
             return settings;
         } else {
-            // Create settings file with defaults if it doesn't exist
-            fs.writeFileSync(settingsPath, JSON.stringify(defaultSettings, null, 2));
-            console.log('Settings file created with defaults at:', settingsPath);
-            return defaultSettings;
+            // No settings found, create with defaults
+            configManager.saveSettings(defaultSettings);
+            configManager.saveMcpServers({}, []);
+            console.log('Settings files created with defaults in ~/.groq/config/');
+            return {
+                ...defaultSettings,
+                mcpServers: {},
+                disabledMcpServers: []
+            };
         }
     } catch (error) {
         console.error('Error reading or parsing settings:', error);
-        // Return defaults in case of error
-        return defaultSettings;
+        // Return defaults with empty MCP config in case of error
+        return {
+            ...defaultSettings,
+            mcpServers: {},
+            disabledMcpServers: []
+        };
     }
 }
 
 function initializeSettingsHandlers(ipcMain, app) {
     appInstance = app; // Store app instance
+    
+    // Initialize config manager
+    configManager.initialize();
 
-    // Log settings path on initialization
-    const userDataPath = appInstance.getPath('userData');
-    const settingsPath = path.join(userDataPath, 'settings.json');
-    console.log('SettingsManager Initialized. Settings file location:', settingsPath);
+    // Log settings paths on initialization
+    console.log('SettingsManager Initialized.');
+    console.log('Main settings:', configManager.CONFIG_PATHS.settingsFile);
+    console.log('MCP servers:', configManager.CONFIG_PATHS.mcpServersFile);
 
     // Handler for getting settings
     ipcMain.handle('get-settings', async () => {
@@ -85,9 +88,25 @@ function initializeSettingsHandlers(ipcMain, app) {
 
     // Handler for getting settings file path
     ipcMain.handle('get-settings-path', async () => {
-      const userDataPath = appInstance.getPath('userData'); // Use stored instance
-      const settingsPath = path.join(userDataPath, 'settings.json');
-      return settingsPath;
+      return configManager.CONFIG_PATHS.settingsFile;
+    });
+    
+    // Handler for getting config directory path
+    ipcMain.handle('get-config-dir', async () => {
+      return configManager.CONFIG_PATHS.configDir;
+    });
+    
+    // Handler for opening config directory
+    ipcMain.handle('open-config-directory', async () => {
+      const { shell } = require('electron');
+      const configDir = configManager.CONFIG_PATHS.configDir;
+      try {
+        await shell.openPath(configDir);
+        return { success: true };
+      } catch (error) {
+        console.error('Error opening config directory:', error);
+        return { success: false, error: error.message };
+      }
     });
 
     // Handler for reloading settings from disk
@@ -103,16 +122,25 @@ function initializeSettingsHandlers(ipcMain, app) {
 
     // Handler for saving settings
     ipcMain.handle('save-settings', async (event, settings) => {
-      const userDataPath = appInstance.getPath('userData'); // Use stored instance
-      const settingsPath = path.join(userDataPath, 'settings.json');
-
       try {
         // Basic validation before saving
         if (!settings || typeof settings !== 'object') {
             throw new Error("Invalid settings object provided.");
         }
-         // Optionally add more validation here
-        fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+        
+        // Extract MCP-related settings
+        const { mcpServers, disabledMcpServers, ...mainSettings } = settings;
+        
+        // Save main settings and MCP settings separately
+        configManager.saveSettings(mainSettings);
+        configManager.saveMcpServers(mcpServers, disabledMcpServers);
+        
+        // Notify all windows about settings change
+        const { BrowserWindow } = require('electron');
+        BrowserWindow.getAllWindows().forEach(window => {
+            window.webContents.send('settings-changed', settings);
+        });
+        
         return { success: true };
       } catch (error) {
         console.error('Error saving settings:', error);

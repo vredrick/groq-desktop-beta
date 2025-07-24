@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-function ChatInput({ onSendMessage, loading = false, visionSupported = false, selectedModel, onModelChange, models = [], onOpenTools, isToolsOpen = false }) {
+function ChatInput({ onSendMessage, loading = false, visionSupported = false, selectedModel, onModelChange, models = [], onOpenTools, isToolsOpen = false, onStop }) {
   const [message, setMessage] = useState('');
   const [images, setImages] = useState([]); // State for selected images
   const textareaRef = useRef(null);
@@ -226,21 +226,30 @@ function ChatInput({ onSendMessage, loading = false, visionSupported = false, se
                 </div>
               )}
               
-              {/* Send Button */}
-              <button
-                type="submit"
-                className="send-button"
-                disabled={loading || (!message.trim() && images.length === 0)}
-                title="Send message"
-              >
-                {loading ? (
-                  <div className="loading-spinner w-4 h-4"></div>
-                ) : (
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M7 11l5-5m0 0l5 5m-5-5v12" />
+              {/* Send/Stop Button */}
+              {loading ? (
+                <button
+                  type="button"
+                  className="stop-button"
+                  onClick={onStop}
+                  title="Stop generating"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="6" width="12" height="12" rx="1" />
                   </svg>
-                )}
-              </button>
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  className="send-button"
+                  disabled={!message.trim() && images.length === 0}
+                  title="Send message"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M13 7.828V20h-2V7.828l-5.364 5.364-1.414-1.414L12 4l7.778 7.778-1.414 1.414L13 7.828z" />
+                  </svg>
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -1,5 +1,7 @@
 const Groq = require('groq-sdk');
+const OpenAI = require('openai');
 const { pruneMessageHistory } = require('./messageUtils'); // Import pruning logic
+const { OPENROUTER_MODELS } = require('../shared/openRouterModels.js');
 
 /**
  * Handles the 'chat-stream' IPC event for streaming chat completions.
@@ -15,15 +17,35 @@ async function handleChatStream(event, messages, model, settings, modelContextSi
     console.log(`Handling chat-stream request. Model: ${model || 'using settings'}, Messages: ${messages?.length}`);
 
     try {
-        // Validate API Key
-        if (!settings.GROQ_API_KEY || settings.GROQ_API_KEY === "<replace me>") {
-            event.sender.send('chat-stream-error', { error: "API key not configured. Please add your GROQ API key in settings." });
-            return;
+        // Validate API Key based on provider
+        if (settings.provider === 'openrouter') {
+            if (!settings.OPENROUTER_API_KEY || settings.OPENROUTER_API_KEY === "<replace me>") {
+                event.sender.send('chat-stream-error', { error: "OpenRouter API key not configured. Please add your OpenRouter API key in settings." });
+                return;
+            }
+        } else {
+            if (!settings.GROQ_API_KEY || settings.GROQ_API_KEY === "<replace me>") {
+                event.sender.send('chat-stream-error', { error: "API key not configured. Please add your API key in settings." });
+                return;
+            }
         }
 
         // Determine model to use: prioritise argument, then settings, then fallback
         const modelToUse = model || settings.model || "llama-3.3-70b-versatile";
-        const modelInfo = modelContextSizes[modelToUse] || modelContextSizes['default'] || { context: 8192, vision_supported: false }; // Ensure default exists
+        
+        // Get model info based on provider
+        let modelInfo;
+        if (settings.provider === 'openrouter') {
+            // Check OpenRouter models first, then custom models
+            modelInfo = OPENROUTER_MODELS[modelToUse] || OPENROUTER_MODELS['default'];
+            
+            // Check if it's a custom model
+            if (settings.openRouterCustomModels && settings.openRouterCustomModels.includes(modelToUse)) {
+                modelInfo = OPENROUTER_MODELS['default'];
+            }
+        } else {
+            modelInfo = modelContextSizes[modelToUse] || modelContextSizes['default'] || { context: 8192, vision_supported: false };
+        }
         console.log(`Using model: ${modelToUse} (Context: ${modelInfo.context}, Vision: ${modelInfo.vision_supported})`);
 
         // Check for vision support if images are present
@@ -39,11 +61,20 @@ async function handleChatStream(event, messages, model, settings, modelContextSi
             return;
         }
 
-        // Initialize Groq SDK
-        const groqConfig = { apiKey: settings.GROQ_API_KEY };
+        // Initialize SDK based on provider
+        let client;
         
-        // Use custom completion URL if provided
-        if (settings.customCompletionUrl && settings.customCompletionUrl.trim()) {
+        if (settings.provider === 'openrouter') {
+            // Use OpenAI SDK for OpenRouter
+            client = new OpenAI({ 
+                apiKey: settings.OPENROUTER_API_KEY,
+                baseURL: 'https://openrouter.ai/api/v1',
+                defaultHeaders: {
+                    'HTTP-Referer': 'https://groq-desktop.app',
+                    'X-Title': 'Groq Desktop'
+                }
+            });
+        } else if (settings.provider === 'custom' && settings.customCompletionUrl && settings.customCompletionUrl.trim()) {
             let customUrl = settings.customCompletionUrl.trim();
             
             // Clean up common trailing paths that users might accidentally include
@@ -57,11 +88,16 @@ async function handleChatStream(event, messages, model, settings, modelContextSi
             customUrl = customUrl.replace(/^http:\/\/localhost:/i, 'http://127.0.0.1:');
             customUrl = customUrl.replace(/^https:\/\/localhost:/i, 'https://127.0.0.1:');
             
-            groqConfig.baseURL = customUrl;
-            console.log(`Using custom completion URL: ${groqConfig.baseURL}`);
+            // Use Groq SDK for custom URLs
+            client = new Groq({
+                apiKey: settings.GROQ_API_KEY,
+                baseURL: customUrl
+            });
+            console.log(`Using custom completion URL: ${customUrl}`);
+        } else {
+            // Default Groq provider
+            client = new Groq({ apiKey: settings.GROQ_API_KEY });
         }
-        
-        const groq = new Groq(groqConfig);
 
         // Prepare tools for the API call
         const tools = (discoveredTools || []).map(tool => ({
@@ -166,7 +202,7 @@ async function handleChatStream(event, messages, model, settings, modelContextSi
                 let streamId = null;
 
                 console.log(`Attempting Groq completion (attempt ${retryCount + 1}/${MAX_TOOL_USE_RETRIES + 1})...`);
-                const stream = await groq.chat.completions.create(chatCompletionParams);
+                const stream = await client.chat.completions.create(chatCompletionParams);
 
                 for await (const chunk of stream) {
                     if (!chunk.choices || !chunk.choices.length || !chunk.choices[0]) continue;
@@ -240,10 +276,22 @@ async function handleChatStream(event, messages, model, settings, modelContextSi
                         return; // Exit function successfully after completion
                     }
                 }
-                // If loop finishes without finish_reason (should not happen with Groq stream)
-                console.warn("Stream ended unexpectedly without a finish_reason.");
-                event.sender.send('chat-stream-error', { error: "Stream ended unexpectedly." });
-                return;
+                // If loop finishes without finish_reason, check if we got any content
+                if (accumulatedContent || accumulatedToolCalls.length > 0) {
+                    console.warn("Stream ended without finish_reason, but content was received. Treating as successful completion.");
+                    event.sender.send('chat-stream-complete', {
+                        content: accumulatedContent,
+                        role: "assistant",
+                        tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+                        reasoning: accumulatedReasoning,
+                        finish_reason: 'stop' // Default to 'stop' for incomplete streams
+                    });
+                    return;
+                } else {
+                    console.warn("Stream ended unexpectedly without any content.");
+                    event.sender.send('chat-stream-error', { error: "Stream ended without receiving any content." });
+                    return;
+                }
 
             } catch (error) {
                 // Check for tool_use_failed specifically

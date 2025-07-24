@@ -20,12 +20,12 @@ function Message({ message, children, onToolCallExecute, allMessages, isLastMess
     return toolMessage ? toolMessage.content : null;
   };
 
-  const messageClasses = `flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`;
+  const messageClasses = `flex ${isUser ? 'justify-end' : 'justify-start'} mb-4 ${!isUser && tool_calls ? 'w-full' : ''}`;
   // Updated styling for messages
   const bubbleStyle = isUser 
     ? 'bg-surface-secondary border border-border-primary' 
     : ''; // No background/border for assistant
-  const bubbleClasses = `relative px-4 py-3 rounded-xl max-w-3xl ${bubbleStyle} group`;
+  const bubbleClasses = `relative px-4 py-3 rounded-xl ${bubbleStyle} group ${!isUser && tool_calls ? 'w-full' : 'max-w-3xl'}`;
   const wrapperClasses = `message-content-wrapper text-text-primary break-words`;
 
   const toggleReasoning = () => setShowReasoning(!showReasoning);

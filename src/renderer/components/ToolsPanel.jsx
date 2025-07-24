@@ -15,22 +15,24 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
       try {
         const settings = await window.electron.getSettings();
         if (settings && settings.mcpServers) {
-          const servers = Object.entries(settings.mcpServers).map(([id, config]) => {
-            let transportType = 'stdio';
-            if (config.transport === 'sse') {
-                transportType = 'sse';
-            } else if (config.transport === 'streamableHttp') {
-                transportType = 'streamableHttp';
-            }
+          const servers = Object.entries(settings.mcpServers)
+            .filter(([id, config]) => config.enabled !== false) // Only show enabled servers
+            .map(([id, config]) => {
+              let transportType = 'stdio';
+              if (config.transport === 'sse') {
+                  transportType = 'sse';
+              } else if (config.transport === 'streamableHttp') {
+                  transportType = 'streamableHttp';
+              }
 
-            return {
-              id,
-              command: transportType === 'stdio' ? config.command : undefined,
-              args: transportType === 'stdio' ? (config.args || []) : [],
-              url: (transportType === 'sse' || transportType === 'streamableHttp') ? config.url : undefined,
-              transport: transportType
-            };
-          });
+              return {
+                id,
+                command: transportType === 'stdio' ? config.command : undefined,
+                args: transportType === 'stdio' ? (config.args || []) : [],
+                url: (transportType === 'sse' || transportType === 'streamableHttp') ? config.url : undefined,
+                transport: transportType
+              };
+            });
           setConfiguredServers(servers);
 
           // Determine which servers are currently connected
@@ -275,7 +277,7 @@ function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer
               onClick={(e) => {
                 e.preventDefault();
                 onClose();
-                navigate('/settings');
+                navigate('/settings', { state: { activeTab: 'mcp' } });
               }}
               className="add-connectors-link"
             >

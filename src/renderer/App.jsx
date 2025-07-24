@@ -76,10 +76,11 @@ function App() {
     workingDirectory 
   } = useChat(); // Use context state
   const [loading, setLoading] = useState(false);
+  const currentStreamHandlerRef = useRef(null);
   const [selectedModel, setSelectedModel] = useState('llama-3.3-70b-versatile');
   const [mcpTools, setMcpTools] = useState([]);
   const [isToolsPanelOpen, setIsToolsPanelOpen] = useState(false);
-  const [isSessionHistoryOpen, setIsSessionHistoryOpen] = useState(false);
+  const [isSessionHistoryOpen, setIsSessionHistoryOpen] = useState(true);
   const [mcpServersStatus, setMcpServersStatus] = useState({ loading: false, message: "" });
   const messagesEndRef = useRef(null);
   // Store the list of models from capabilities keys
@@ -240,6 +241,28 @@ function App() {
     loadInitialData();
   }, []); // Empty dependency array ensures this runs only once on mount
 
+  // Listen for settings changes to reload models when provider changes
+  useEffect(() => {
+    const unsubscribe = window.electron.onSettingsChanged(async (settings) => {
+      // Reload models when provider changes
+      const configs = await window.electron.getModelConfigs();
+      setModelConfigs(configs);
+      const availableModels = Object.keys(configs).filter(key => key !== 'default');
+      setModels(availableModels);
+      
+      // Select appropriate model for the new provider
+      let effectiveModel = availableModels.length > 0 ? availableModels[0] : 'default';
+      if (settings.model && configs[settings.model]) {
+        effectiveModel = settings.model;
+      }
+      setSelectedModel(effectiveModel);
+    });
+    
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
   // Save model selection to settings when it changes, ONLY after initial load
   useEffect(() => {
     // Prevent saving during initial setup before models/settings are loaded/validated
@@ -389,6 +412,9 @@ function App() {
 
         // Start streaming chat
         const streamHandler = window.electron.startChatStream(turnMessages, selectedModel);
+        
+        // Store reference to current stream handler
+        currentStreamHandlerRef.current = streamHandler;
 
         // Collect the final message data
         let finalAssistantData = {
@@ -476,6 +502,9 @@ function App() {
 
         // Clean up stream handlers
         streamHandler.cleanup();
+        
+        // Clear the stream handler reference
+        currentStreamHandlerRef.current = null;
 
         // Check and process tool calls if any
         if (turnAssistantMessage && turnAssistantMessage.tool_calls?.length > 0) {
@@ -524,6 +553,33 @@ function App() {
         assistantMessage: turnAssistantMessage,
         toolResponseMessages: turnToolResponses,
     };
+  };
+
+  // Handle stopping the current stream
+  const handleStop = () => {
+    if (currentStreamHandlerRef.current) {
+      console.log('Stopping current stream...');
+      // Clean up the stream
+      currentStreamHandlerRef.current.cleanup();
+      currentStreamHandlerRef.current = null;
+      
+      // Set loading to false
+      setLoading(false);
+      
+      // Add a message indicating the stream was stopped
+      setMessages(prev => {
+        const newMessages = [...prev];
+        const idx = newMessages.findIndex(msg => msg.role === 'assistant' && msg.isStreaming);
+        if (idx !== -1) {
+          newMessages[idx] = { 
+            ...newMessages[idx], 
+            content: newMessages[idx].content + ' [Stopped]',
+            isStreaming: false 
+          };
+        }
+        return newMessages;
+      });
+    }
   };
 
   // Handle sending message (text or structured content with images)
@@ -849,43 +905,43 @@ function App() {
   return (
     <div className="flex flex-col h-screen bg-bg-primary">
       <header className="bg-bg-secondary border-b border-border-primary">
-        <div className="max-w-7xl mx-auto py-3 px-6 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-semibold text-text-primary">
-              groq<span className="text-primary">desktop</span>
-            </h1>
-            {workingDirectory && (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-gray-500">•</span>
-                <span className="text-gray-400">{workingDirectory.split('/').pop() || 'Project'}</span>
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsSessionHistoryOpen(true)}
-              className="btn btn-primary text-sm"
-              title="Chat History"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              History
-            </button>
-            <Link to="/settings" className="btn btn-primary text-sm">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        <div className="mx-auto py-2 px-4 flex items-center gap-3">
+          <button
+            onClick={() => setIsSessionHistoryOpen(!isSessionHistoryOpen)}
+            className="p-1 hover:bg-surface-hover rounded transition-colors"
+            title="Toggle sidebar"
+          >
+            <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+              <rect x="2" y="4" width="16" height="2" rx="1" />
+              <rect x="2" y="9" width="16" height="2" rx="1" />
+              <rect x="2" y="14" width="16" height="2" rx="1" />
             </svg>
-            Settings
-          </Link>
-          </div>
+          </button>
+          <h1 className="text-lg font-medium text-text-primary">
+            groq<span className="text-primary">desktop</span>
+          </h1>
+          {workingDirectory && (
+            <>
+              <span className="text-gray-600 text-sm">|</span>
+              <span className="text-gray-400 text-sm">{workingDirectory.split('/').pop() || 'Project'}</span>
+            </>
+          )}
         </div>
       </header>
       
-      <main className="flex-1 overflow-hidden flex flex-col bg-bg-primary relative">
-        <div className="flex-1 overflow-y-auto px-4 pb-24">
-          <div className="max-w-3xl mx-auto">
+      
+      {/* Main container with sidebar and content */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Sidebar */}
+        <SessionHistory 
+          isOpen={isSessionHistoryOpen}
+          onClose={() => setIsSessionHistoryOpen(false)}
+        />
+        
+        {/* Main content area */}
+        <main className="flex-1 overflow-hidden flex flex-col bg-bg-primary relative">
+        <div className="flex-1 overflow-y-auto px-4 pb-32">
+          <div className="max-w-3xl mx-auto py-4">
             <MessageList 
               messages={messages} 
               onToolCallExecute={executeToolCall} 
@@ -910,8 +966,10 @@ function App() {
             }
           }}
           isToolsOpen={isToolsPanelOpen}
+          onStop={handleStop}
         />
-      </main>
+        </main>
+      </div>
 
       {isToolsPanelOpen && (
         <ToolsPanel
@@ -930,11 +988,6 @@ function App() {
         />
       )}
       {/* --- End Tool Approval Modal --- */}
-      
-      <SessionHistory 
-        isOpen={isSessionHistoryOpen}
-        onClose={() => setIsSessionHistoryOpen(false)}
-      />
     </div>
   );
 }

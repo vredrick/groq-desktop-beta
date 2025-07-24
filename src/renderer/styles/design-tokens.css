@@ -5,19 +5,19 @@
   --color-primary-hover: #ff8655;
   --color-primary-active: #e55525;
   
-  /* Background Colors */
-  --color-bg-primary: #0a0a0a;
-  --color-bg-secondary: #141414;
-  --color-bg-tertiary: #1a1a1a;
-  --color-bg-elevated: #1f1f1f;
-  --color-bg-hover: #242424;
-  --color-bg-active: #2a2a2a;
+  /* Background Colors - Updated for cleaner look */
+  --color-bg-primary: #0f0f0f;
+  --color-bg-secondary: #171717;
+  --color-bg-tertiary: #1f1f1f;
+  --color-bg-elevated: #242424;
+  --color-bg-hover: #2a2a2a;
+  --color-bg-active: #303030;
   
-  /* Surface Colors */
-  --color-surface-primary: #1a1a1a;
-  --color-surface-secondary: #242424;
-  --color-surface-tertiary: #2a2a2a;
-  --color-surface-hover: #303030;
+  /* Surface Colors - Lighter grays for better contrast */
+  --color-surface-primary: #1c1c1c;
+  --color-surface-secondary: #252525;
+  --color-surface-tertiary: #2e2e2e;
+  --color-surface-hover: #353535;
   
   /* Text Colors */
   --color-text-primary: #ffffff;
@@ -25,10 +25,10 @@
   --color-text-tertiary: #707070;
   --color-text-disabled: #4a4a4a;
   
-  /* Border Colors */
-  --color-border-primary: #2a2a2a;
-  --color-border-secondary: #353535;
-  --color-border-hover: #404040;
+  /* Border Colors - Subtler borders */
+  --color-border-primary: #262626;
+  --color-border-secondary: #303030;
+  --color-border-hover: #3a3a3a;
   --color-border-focus: var(--color-primary);
   
   /* Status Colors */
@@ -43,9 +43,12 @@
   --color-code-bg: #0d0d0d;
   --color-code-border: #1a1a1a;
   
-  /* Spacing Scale */
+  /* Spacing Scale - Added compact values */
+  --space-0-5: 0.125rem;
   --space-1: 0.25rem;
+  --space-1-5: 0.375rem;
   --space-2: 0.5rem;
+  --space-2-5: 0.625rem;
   --space-3: 0.75rem;
   --space-4: 1rem;
   --space-5: 1.25rem;
@@ -90,9 +93,9 @@
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
   
   /* Transitions */
-  --transition-fast: 150ms ease;
-  --transition-base: 200ms ease;
-  --transition-slow: 300ms ease;
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
   
   /* Z-Index Scale */
   --z-base: 0;

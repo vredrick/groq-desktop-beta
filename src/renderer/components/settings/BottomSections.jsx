@@ -2,9 +2,18 @@ import React from 'react';
 
 function BottomSections({ handleResetToolApprovals, settings }) {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-full">
-      <ToolCallPermissions handleResetToolApprovals={handleResetToolApprovals} />
-      <CurrentConfiguration settings={settings} />
+    <div className="h-full flex flex-col">
+      {/* Configuration Note */}
+      <div className="bg-surface-secondary rounded border border-border-primary p-2 mb-4">
+        <p className="text-xs text-text-secondary">
+          General settings and API keys are stored in <span className="font-mono">settings.json</span>
+        </p>
+      </div>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0">
+        <ToolCallPermissions handleResetToolApprovals={handleResetToolApprovals} />
+        <CurrentConfiguration settings={settings} />
+      </div>
     </div>
   );
 }

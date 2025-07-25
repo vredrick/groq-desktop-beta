@@ -9,13 +9,16 @@ function loadSettings() {
     const defaultSettings = {
         GROQ_API_KEY: "<replace me>",
         OPENROUTER_API_KEY: "<replace me>",
+        customSystemPrompt: '',
+        customCompletionUrl: '',
+        toolOutputLimit: 8000
+    };
+    
+    const defaultModels = {
         provider: "groq",
         model: "llama-3.3-70b-versatile",
         temperature: 0.7,
         top_p: 0.95,
-        customSystemPrompt: '',
-        customCompletionUrl: '',
-        toolOutputLimit: 8000,
         openRouterCustomModels: []
     };
 
@@ -26,11 +29,16 @@ function loadSettings() {
         // Load MCP servers from separate file
         const { mcpServers, disabledMcpServers } = configManager.loadMcpServers();
         
+        // Load models config from separate file
+        const modelsConfig = configManager.loadModels();
+        
         if (mainSettings) {
-            // Merge with defaults and MCP settings
+            // Merge all settings together
             const settings = {
                 ...defaultSettings,
                 ...mainSettings,
+                ...defaultModels,
+                ...modelsConfig,
                 mcpServers,
                 disabledMcpServers
             };
@@ -38,23 +46,25 @@ function loadSettings() {
             // Ensure all required fields have values
             settings.GROQ_API_KEY = settings.GROQ_API_KEY || defaultSettings.GROQ_API_KEY;
             settings.OPENROUTER_API_KEY = settings.OPENROUTER_API_KEY || defaultSettings.OPENROUTER_API_KEY;
-            settings.provider = settings.provider || defaultSettings.provider;
-            settings.model = settings.model || defaultSettings.model;
-            settings.temperature = settings.temperature ?? defaultSettings.temperature;
-            settings.top_p = settings.top_p ?? defaultSettings.top_p;
             settings.customSystemPrompt = settings.customSystemPrompt || defaultSettings.customSystemPrompt;
             settings.customCompletionUrl = settings.customCompletionUrl || defaultSettings.customCompletionUrl;
             settings.toolOutputLimit = settings.toolOutputLimit ?? defaultSettings.toolOutputLimit;
-            settings.openRouterCustomModels = settings.openRouterCustomModels || defaultSettings.openRouterCustomModels;
+            settings.provider = settings.provider || defaultModels.provider;
+            settings.model = settings.model || defaultModels.model;
+            settings.temperature = settings.temperature ?? defaultModels.temperature;
+            settings.top_p = settings.top_p ?? defaultModels.top_p;
+            settings.openRouterCustomModels = settings.openRouterCustomModels || defaultModels.openRouterCustomModels;
             
             return settings;
         } else {
             // No settings found, create with defaults
             configManager.saveSettings(defaultSettings);
             configManager.saveMcpServers({}, []);
+            configManager.saveModels(defaultModels);
             console.log('Settings files created with defaults in ~/.groq/config/');
             return {
                 ...defaultSettings,
+                ...defaultModels,
                 mcpServers: {},
                 disabledMcpServers: []
             };
@@ -64,6 +74,7 @@ function loadSettings() {
         // Return defaults with empty MCP config in case of error
         return {
             ...defaultSettings,
+            ...defaultModels,
             mcpServers: {},
             disabledMcpServers: []
         };
@@ -129,11 +140,31 @@ function initializeSettingsHandlers(ipcMain, app) {
         }
         
         // Extract MCP-related settings
-        const { mcpServers, disabledMcpServers, ...mainSettings } = settings;
+        const { mcpServers, disabledMcpServers, ...restSettings } = settings;
         
-        // Save main settings and MCP settings separately
+        // Extract model-related settings
+        const { 
+            provider, 
+            model, 
+            temperature, 
+            top_p, 
+            openRouterCustomModels,
+            ...mainSettings 
+        } = restSettings;
+        
+        // Create models config object
+        const modelsConfig = {
+            provider,
+            model,
+            temperature,
+            top_p,
+            openRouterCustomModels
+        };
+        
+        // Save all three configs separately
         configManager.saveSettings(mainSettings);
         configManager.saveMcpServers(mcpServers, disabledMcpServers);
+        configManager.saveModels(modelsConfig);
         
         // Notify all windows about settings change
         const { BrowserWindow } = require('electron');

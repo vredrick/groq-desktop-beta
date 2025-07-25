@@ -22,6 +22,9 @@ function ConfigurationLocations({ settingsPath, configDir }) {
             <p className="text-text-tertiary">
               MCP servers: <span className="font-mono text-text-secondary">{configDir}/mcp-servers.json</span>
             </p>
+            <p className="text-text-tertiary">
+              Models: <span className="font-mono text-text-secondary">{configDir}/models.json</span>
+            </p>
           </div>
         </div>
         {configDir && (

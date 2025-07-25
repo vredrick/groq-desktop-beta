@@ -8,9 +8,17 @@ import CustomSystemPrompt from './CustomSystemPrompt';
 
 function AIModelsTab({ settings, handleChange, handleNumberChange, showApiKey, setShowApiKey, showOpenRouterApiKey, setShowOpenRouterApiKey, newCustomModel, setNewCustomModel }) {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-full">
-      {/* Left Panel - Provider Settings */}
-      <div className="space-y-4 overflow-y-auto pr-2">
+    <div className="h-full flex flex-col">
+      {/* Configuration Note */}
+      <div className="bg-surface-secondary rounded border border-border-primary p-2 mb-4">
+        <p className="text-xs text-text-secondary">
+          Model configurations are stored separately in <span className="font-mono">models.json</span>
+        </p>
+      </div>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0">
+        {/* Left Panel - Provider Settings */}
+        <div className="space-y-4 overflow-y-auto pr-2">
         <ProviderSelector 
           provider={settings.provider}
           handleChange={handleChange}
@@ -48,19 +56,20 @@ function AIModelsTab({ settings, handleChange, handleNumberChange, showApiKey, s
         )}
       </div>
 
-      {/* Right Panel - Generation Settings */}
-      <div className="space-y-4 overflow-y-auto pl-2">
-        <GenerationParameters 
-          temperature={settings.temperature}
-          topP={settings.top_p}
-          toolOutputLimit={settings.toolOutputLimit}
-          handleNumberChange={handleNumberChange}
-        />
+        {/* Right Panel - Generation Settings */}
+        <div className="space-y-4 overflow-y-auto pl-2">
+          <GenerationParameters 
+            temperature={settings.temperature}
+            topP={settings.top_p}
+            toolOutputLimit={settings.toolOutputLimit}
+            handleNumberChange={handleNumberChange}
+          />
 
-        <CustomSystemPrompt 
-          customSystemPrompt={settings.customSystemPrompt}
-          handleChange={handleChange}
-        />
+          <CustomSystemPrompt 
+            customSystemPrompt={settings.customSystemPrompt}
+            handleChange={handleChange}
+          />
+        </div>
       </div>
     </div>
   );

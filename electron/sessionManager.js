@@ -1,5 +1,8 @@
+// Node.js built-in modules
 const fs = require('fs');
 const path = require('path');
+
+// External dependencies
 const { app } = require('electron');
 
 // Get the base directory for all Groq sessions

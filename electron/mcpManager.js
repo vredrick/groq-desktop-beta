@@ -1,10 +1,15 @@
+// Node.js built-in modules
 const fs = require('fs');
 const path = require('path');
-const { URL } = require('url'); // Import URL
+const { URL } = require('url');
+
+// MCP SDK modules
 const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
-const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
 const { SSEClientTransport } = require('@modelcontextprotocol/sdk/client/sse.js');
+const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
 const { StreamableHTTPClientTransport } = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
+
+// Local modules
 const { getTokensForServer, getClientInfoForServer } = require('./authManager');
 const configManager = require('./configManager');
 

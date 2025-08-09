@@ -31,7 +31,7 @@
     "ansi-to-html": "^0.7.2",
     "electron-json-storage": "^4.6.0",
     "groq-sdk": "0.16.0",
-    "node-fetch": "^2.6.6",
+    "node-fetch": "^2.7.0",
     "openai": "^5.10.2",
     "react": "19.0.0",
     "react-dom": "19.0.0",

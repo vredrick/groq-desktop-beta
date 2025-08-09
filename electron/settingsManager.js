@@ -1,17 +1,24 @@
-const fs = require('fs');
-const path = require('path');
+// Node.js built-in modules
+const _fs = require('fs');
+const _path = require('path');
+
+// Local modules
 const configManager = require('./configManager');
 
-let appInstance; // To store app instance for userData path
+let _appInstance; // To store app instance for userData path
 
 // Helper function to load settings with defaults and validation
 function loadSettings() {
     const defaultSettings = {
         GROQ_API_KEY: "<replace me>",
+        OPENAI_API_KEY: "<replace me>",
         OPENROUTER_API_KEY: "<replace me>",
         customSystemPrompt: '',
         customCompletionUrl: '',
-        toolOutputLimit: 8000
+        toolOutputLimit: 8000,
+        // GPT-5 specific settings
+        reasoning_effort: 'medium', // 'minimal', 'low', 'medium', 'high'
+        text_verbosity: 'medium' // 'low', 'medium', 'high'
     };
     
     const defaultModels = {
@@ -31,29 +38,45 @@ function loadSettings() {
         
         // Load models config from separate file
         const modelsConfig = configManager.loadModels();
+        console.log('[loadSettings] Models config loaded:', modelsConfig);
         
         if (mainSettings) {
-            // Merge all settings together
+            // Merge all settings together - modelsConfig should override defaultModels
             const settings = {
                 ...defaultSettings,
-                ...mainSettings,
                 ...defaultModels,
-                ...modelsConfig,
+                ...mainSettings,
+                ...modelsConfig,  // This should come last to override defaults
                 mcpServers,
                 disabledMcpServers
             };
             
             // Ensure all required fields have values
+            // Only use defaults if the value is truly missing (not just falsy)
             settings.GROQ_API_KEY = settings.GROQ_API_KEY || defaultSettings.GROQ_API_KEY;
+            settings.OPENAI_API_KEY = settings.OPENAI_API_KEY || defaultSettings.OPENAI_API_KEY;
             settings.OPENROUTER_API_KEY = settings.OPENROUTER_API_KEY || defaultSettings.OPENROUTER_API_KEY;
             settings.customSystemPrompt = settings.customSystemPrompt || defaultSettings.customSystemPrompt;
             settings.customCompletionUrl = settings.customCompletionUrl || defaultSettings.customCompletionUrl;
             settings.toolOutputLimit = settings.toolOutputLimit ?? defaultSettings.toolOutputLimit;
-            settings.provider = settings.provider || defaultModels.provider;
-            settings.model = settings.model || defaultModels.model;
+            
+            // Don't override provider and model if they're already set from modelsConfig
+            if (!settings.provider) {
+                settings.provider = defaultModels.provider;
+            }
+            if (!settings.model) {
+                settings.model = defaultModels.model;
+            }
+            
             settings.temperature = settings.temperature ?? defaultModels.temperature;
             settings.top_p = settings.top_p ?? defaultModels.top_p;
             settings.openRouterCustomModels = settings.openRouterCustomModels || defaultModels.openRouterCustomModels;
+            
+            console.log('[loadSettings] Final settings:', {
+                provider: settings.provider,
+                model: settings.model,
+                hasOpenAIKey: !!settings.OPENAI_API_KEY && settings.OPENAI_API_KEY !== "<replace me>"
+            });
             
             return settings;
         } else {
@@ -134,6 +157,8 @@ function initializeSettingsHandlers(ipcMain, app) {
     // Handler for saving settings
     ipcMain.handle('save-settings', async (event, settings) => {
       try {
+        console.log(`[save-settings] Saving settings with provider: ${settings.provider}, model: ${settings.model}`);
+        
         // Basic validation before saving
         if (!settings || typeof settings !== 'object') {
             throw new Error("Invalid settings object provided.");
@@ -151,6 +176,8 @@ function initializeSettingsHandlers(ipcMain, app) {
             openRouterCustomModels,
             ...mainSettings 
         } = restSettings;
+        
+        console.log(`[save-settings] Model being saved: ${model}, Provider: ${provider}`);
         
         // Create models config object
         const modelsConfig = {

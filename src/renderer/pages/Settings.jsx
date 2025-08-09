@@ -1,12 +1,19 @@
+// React hooks
 import { useState, useEffect } from 'react';
+
+// React Router
 import { Link, useLocation } from 'react-router-dom';
-import { useSettingsManager } from '../hooks/useSettingsManager';
+
+// Local hooks
 import { useMCPServerManager } from '../hooks/useMCPServerManager';
-import StatusMessage from '../components/settings/StatusMessage';
-import ConfigurationLocations from '../components/settings/ConfigurationLocations';
+import { useSettingsManager } from '../hooks/useSettingsManager';
+
+// Settings components
 import AIModelsTab from '../components/settings/AIModelsTab';
-import MCPServersTab from '../components/settings/MCPServersTab';
 import BottomSections from '../components/settings/BottomSections';
+import ConfigurationLocations from '../components/settings/ConfigurationLocations';
+import MCPServersTab from '../components/settings/MCPServersTab';
+import StatusMessage from '../components/settings/StatusMessage';
 import Tabs from '../components/settings/Tabs';
 
 const TABS = [
@@ -44,9 +51,28 @@ function Settings() {
     }
   }, [location.state]);
 
-  const handleChange = (e) => {
+  const handleChange = async (e) => {
     const { name, value } = e.target;
     const updatedSettings = { ...settings, [name]: value };
+    
+    // If provider changed, ensure we reset the model to a valid one for the new provider
+    if (name === 'provider') {
+      // Get the models for the new provider
+      const configs = await window.electron.getModelConfigs(value);
+      const availableModels = Object.keys(configs).filter(key => key !== 'default');
+      
+      // Select appropriate default model for the provider
+      let defaultModel = availableModels.length > 0 ? availableModels[0] : 'default';
+      if (value === 'openai' && availableModels.includes('gpt-5-mini')) {
+        defaultModel = 'gpt-5-mini';
+      } else if (value === 'groq' && availableModels.includes('llama-3.3-70b-versatile')) {
+        defaultModel = 'llama-3.3-70b-versatile';
+      }
+      
+      updatedSettings.model = defaultModel;
+      console.log('Provider changed to:', value, 'Setting model to:', defaultModel);
+    }
+    
     updateSettings(updatedSettings);
   };
 

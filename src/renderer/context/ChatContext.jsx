@@ -1,3 +1,4 @@
+// React hooks and context
 import { createContext, useState, useContext, useEffect, useCallback } from 'react';
 
 // Create the context

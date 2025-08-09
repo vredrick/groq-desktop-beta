@@ -1,11 +1,16 @@
+// React and React DOM
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { createHashRouter, RouterProvider } from 'react-router-dom';
+
+// Styles
 import './index.css';
+
+// Local components and context
 import App from './App';
-import Settings from './pages/Settings';
-import ProjectSelector from './pages/ProjectSelector';
 import { ChatProvider } from './context/ChatContext';
+import ProjectSelector from './pages/ProjectSelector';
+import Settings from './pages/Settings';
 
 const router = createHashRouter([
   {

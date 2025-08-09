@@ -1,10 +1,16 @@
+// React
 import React from 'react';
-import ProviderSelector from './providers/ProviderSelector';
-import GroqProviderSettings from './providers/GroqProviderSettings';
-import OpenRouterProviderSettings from './providers/OpenRouterProviderSettings';
+
+// Provider components
 import CustomProviderSettings from './providers/CustomProviderSettings';
-import GenerationParameters from './GenerationParameters';
+import GroqProviderSettings from './providers/GroqProviderSettings';
+import OpenAIProviderSettings from './providers/OpenAIProviderSettings';
+import OpenRouterProviderSettings from './providers/OpenRouterProviderSettings';
+import ProviderSelector from './providers/ProviderSelector';
+
+// Settings components
 import CustomSystemPrompt from './CustomSystemPrompt';
+import GenerationParameters from './GenerationParameters';
 
 function AIModelsTab({ settings, handleChange, handleNumberChange, showApiKey, setShowApiKey, showOpenRouterApiKey, setShowOpenRouterApiKey, newCustomModel, setNewCustomModel }) {
   return (
@@ -27,6 +33,15 @@ function AIModelsTab({ settings, handleChange, handleNumberChange, showApiKey, s
         {settings.provider === 'groq' && (
           <GroqProviderSettings 
             apiKey={settings.GROQ_API_KEY} 
+            showApiKey={showApiKey}
+            setShowApiKey={setShowApiKey}
+            handleChange={handleChange}
+          />
+        )}
+        
+        {settings.provider === 'openai' && (
+          <OpenAIProviderSettings 
+            apiKey={settings.OPENAI_API_KEY} 
             showApiKey={showApiKey}
             setShowApiKey={setShowApiKey}
             handleChange={handleChange}
@@ -63,6 +78,11 @@ function AIModelsTab({ settings, handleChange, handleNumberChange, showApiKey, s
             topP={settings.top_p}
             toolOutputLimit={settings.toolOutputLimit}
             handleNumberChange={handleNumberChange}
+            provider={settings.provider}
+            model={settings.model}
+            reasoningEffort={settings.reasoning_effort}
+            textVerbosity={settings.text_verbosity}
+            handleChange={handleChange}
           />
 
           <CustomSystemPrompt 

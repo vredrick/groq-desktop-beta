@@ -1,5 +1,10 @@
+// React
 import React, { useState, useEffect } from 'react';
+
+// React Router
 import { useNavigate } from 'react-router-dom';
+
+// Local context
 import { useChat } from '../context/ChatContext';
 
 const ProjectSelector = () => {

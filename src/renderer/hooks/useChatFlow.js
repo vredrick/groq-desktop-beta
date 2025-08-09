@@ -1,6 +1,11 @@
+// React hooks
 import { useCallback, useRef, useState } from 'react';
+
+// Local context and services
 import { useChat } from '../context/ChatContext';
 import { ChatFlowStateMachine, ChatFlowStates, ChatFlowEvents } from '../services/ChatFlowStateMachine';
+
+// Utilities
 import { setToolApprovalStatus } from '../utils/toolApproval';
 
 export const useChatFlow = (selectedModel) => {
@@ -29,24 +34,34 @@ export const useChatFlow = (selectedModel) => {
         stateMachineRef.current.handleToolResult(result);
       },
       onCompleted: (context) => {
-        const { processedTools = [] } = context;
-        if (processedTools.some(pt => pt.result && !pt.error)) {
-          // If tools were executed, we might need to continue the conversation
-          const shouldContinue = processedTools.length > 0;
-          if (shouldContinue) {
-            stateMachineRef.current.transition(ChatFlowEvents.CONTINUE_CONVERSATION, {
-              messages: buildNextTurnMessages(context)
-            });
-          } else {
-            setLoading(false);
-          }
+        // Use the latest state machine context (contains assistantMessage/messages)
+        const ctx = stateMachineRef.current?.currentContext || {};
+        const processedTools = ctx.processedTools || context.processedTools || [];
+        const hadToolCalls = Array.isArray(ctx.assistantMessage?.tool_calls) && ctx.assistantMessage.tool_calls.length > 0;
+
+        if (hadToolCalls && processedTools.length > 0) {
+          // Continue exactly once with tool results
+          const nextMessages = buildNextTurnMessages({ ...ctx, processedTools });
+          stateMachineRef.current.transition(ChatFlowEvents.CONTINUE_CONVERSATION, {
+            messages: nextMessages
+          });
         } else {
+          // No follow-up needed; finalize turn
           setLoading(false);
+          if (stateMachineRef.current?.currentContext) {
+            // Clear any stale tool state to avoid accidental re-entry
+            stateMachineRef.current.currentContext.processedTools = [];
+            stateMachineRef.current.currentContext.toolQueue = [];
+          }
+          // Reset state machine to IDLE
+          stateMachineRef.current.reset();
         }
       },
       onError: (context) => {
         setLoading(false);
         console.error('Chat flow error:', context.error);
+        // Reset state machine to IDLE after error
+        stateMachineRef.current.reset();
       }
     });
   }
@@ -166,6 +181,14 @@ export const useChatFlow = (selectedModel) => {
           };
           stateMachineRef.current.transition(ChatFlowEvents.STREAM_COMPLETE);
         } else {
+          // No tool calls, so we can complete immediately
+          stateMachineRef.current.currentContext = {
+            ...stateMachineRef.current.currentContext,
+            assistantMessage: finalAssistantData,
+            messages: turnMessages
+          };
+          stateMachineRef.current.transition(ChatFlowEvents.STREAM_COMPLETE);
+          // Transition immediately to completed since there are no tools to process
           stateMachineRef.current.transition(ChatFlowEvents.ALL_TOOLS_PROCESSED);
         }
         
@@ -263,23 +286,26 @@ export const useChatFlow = (selectedModel) => {
       console.log('Stopping current stream...');
       currentStreamHandlerRef.current.cleanup();
       currentStreamHandlerRef.current = null;
-      setLoading(false);
-      
-      setMessages(prev => {
-        const newMessages = [...prev];
-        const idx = newMessages.findIndex(msg => msg.role === 'assistant' && msg.isStreaming);
-        if (idx !== -1) {
-          newMessages[idx] = { 
-            ...newMessages[idx], 
-            content: newMessages[idx].content + ' [Stopped]',
-            isStreaming: false 
-          };
-        }
-        return newMessages;
-      });
-      
-      stateMachineRef.current.transition(ChatFlowEvents.STOP);
     }
+
+    // Always clear loading, even if no active stream handler (e.g., stuck states)
+    setLoading(false);
+
+    // If a streaming placeholder exists, mark it stopped
+    setMessages(prev => {
+      const newMessages = [...prev];
+      const idx = newMessages.findIndex(msg => msg.role === 'assistant' && msg.isStreaming);
+      if (idx !== -1) {
+        newMessages[idx] = { 
+          ...newMessages[idx], 
+          content: (newMessages[idx].content || '') + ' [Stopped]',
+          isStreaming: false 
+        };
+      }
+      return newMessages;
+    });
+
+    stateMachineRef.current.transition(ChatFlowEvents.STOP);
   }, [setMessages]);
 
   return {

@@ -14,6 +14,7 @@ function ProviderSelector({ provider, handleChange }) {
         className="w-full px-3 py-2 bg-bg-tertiary border border-border-primary rounded-lg text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors"
       >
         <option value="groq">Groq</option>
+        <option value="openai">OpenAI</option>
         <option value="openrouter">OpenRouter</option>
         <option value="custom">Custom</option>
       </select>

@@ -1,4 +1,7 @@
+// React
 import React, { useState, useEffect, useRef } from 'react';
+
+// React Router
 import { useNavigate } from 'react-router-dom';
 
 function ToolsPanel({ tools = [], onClose, onDisconnectServer, onReconnectServer }) {

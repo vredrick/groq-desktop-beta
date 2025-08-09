@@ -1,5 +1,5 @@
-const { app } = require('electron');
-const fs   = require('fs');
+const { app, BrowserWindow, ipcMain, screen, shell, dialog } = require('electron');
+const fs = require('fs');
 const path = require('path');
 
 // Create ~/.groq/logs if it does not exist
@@ -21,12 +21,11 @@ const logStream = fs.createWriteStream(logFile, { flags: 'a' });
 
 console.log('Groq Desktop started, logging to', logFile);
 
-// Import necessary Electron modules
-const { BrowserWindow, ipcMain, screen, shell, dialog } = require('electron');
 
 // Import shared models
 const { MODEL_CONTEXT_SIZES } = require('../shared/models.js');
 const { OPENROUTER_MODELS } = require('../shared/openRouterModels.js');
+const { OPENAI_MODELS } = require('../shared/openAIModels.js');
 
 // Import handlers
 const chatHandler = require('./chatHandler');
@@ -35,7 +34,7 @@ const toolHandler = require('./toolHandler');
 // Import new manager modules
 const { initializeSettingsHandlers, loadSettings } = require('./settingsManager');
 const { initializeCommandResolver, resolveCommandPath } = require('./commandResolver');
-const configManager = require('./configManager');
+const _configManager = require('./configManager');
 const mcpManager = require('./mcpManager');
 const { initializeWindowManager } = require('./windowManager');
 const authManager = require('./authManager');
@@ -106,11 +105,20 @@ app.whenReady().then(async () => {
   });
 
   // Handler for getting model configurations
-  ipcMain.handle('get-model-configs', async () => {
+  ipcMain.handle('get-model-configs', async (event, overrideProvider) => {
       const settings = loadSettings();
+      // Use override provider if provided, otherwise use settings provider
+      const provider = overrideProvider || settings.provider;
+      console.log(`[get-model-configs] Provider: ${provider}, Override: ${overrideProvider}`);
+      console.log(`[get-model-configs] Current settings.model: ${settings.model}`);
       let configs = modelContextSizes;
       
-      if (settings.provider === 'openrouter') {
+      if (provider === 'openai') {
+          // For OpenAI, use OpenAI models
+          console.log(`[get-model-configs] Loading OpenAI models:`, Object.keys(OPENAI_MODELS));
+          configs = { ...OPENAI_MODELS };
+          console.log(`[get-model-configs] OpenAI configs loaded:`, JSON.stringify(configs, null, 2));
+      } else if (provider === 'openrouter') {
           // For OpenRouter, combine predefined models with custom models
           configs = { ...OPENROUTER_MODELS };
           

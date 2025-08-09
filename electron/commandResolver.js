@@ -1,7 +1,6 @@
-const path = require('path');
-const fs = require('fs');
 const { execSync } = require('child_process');
-const process = require('process');
+const fs = require('fs');
+const path = require('path');
 
 let isAppPackaged; // Store packaged status
 let appInstance; // Store app instance for paths

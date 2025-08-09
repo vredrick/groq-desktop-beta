@@ -1,6 +1,9 @@
+// React
 import React, { useState, useEffect } from 'react';
-import Message from './Message';
+
+// Local components
 import MarkdownRenderer from './MarkdownRenderer';
+import Message from './Message';
 
 function MessageList({ messages = [], onToolCallExecute, onRemoveLastMessage }) {
   const [showRemoveButtonIndex, setShowRemoveButtonIndex] = useState(null);

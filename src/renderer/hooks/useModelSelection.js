@@ -1,3 +1,4 @@
+// React hooks
 import { useState, useEffect } from 'react';
 
 export const useModelSelection = () => {
@@ -11,14 +12,18 @@ export const useModelSelection = () => {
   useEffect(() => {
     const loadModelData = async () => {
       try {
-        // Load model configurations first
-        const configs = await window.electron.getModelConfigs();
+        // Load settings first to get the provider
+        const settings = await window.electron.getSettings();
+        
+        // Load model configurations for the current provider
+        const configs = await window.electron.getModelConfigs(settings?.provider);
+        console.log(`[useModelSelection] Raw configs received:`, configs);
         setModelConfigs(configs);
         const availableModels = Object.keys(configs).filter(key => key !== 'default');
         setModels(availableModels);
-
-        // Load settings
-        const settings = await window.electron.getSettings();
+        
+        console.log(`[useModelSelection] Loaded models for provider ${settings?.provider}:`, availableModels);
+        console.log(`[useModelSelection] Full model list:`, Object.keys(configs));
         let effectiveModel = availableModels.length > 0 ? availableModels[0] : 'default';
 
         if (settings && settings.model) {
@@ -33,6 +38,7 @@ export const useModelSelection = () => {
         }
 
         setSelectedModel(effectiveModel);
+        setCurrentProvider(settings?.provider || 'groq');
         setInitialLoadComplete(true);
       } catch (error) {
         console.error('Error loading model data:', error);
@@ -43,27 +49,50 @@ export const useModelSelection = () => {
     loadModelData();
   }, []);
 
+  // Track current provider to detect changes
+  const [currentProvider, setCurrentProvider] = useState(null);
+  
   // Listen for settings changes to reload models when provider changes
   useEffect(() => {
     const unsubscribe = window.electron.onSettingsChanged(async (settings) => {
-      // Reload models when provider changes
-      const configs = await window.electron.getModelConfigs();
-      setModelConfigs(configs);
-      const availableModels = Object.keys(configs).filter(key => key !== 'default');
-      setModels(availableModels);
+      console.log('[useModelSelection] Settings changed event received');
+      console.log('[useModelSelection] Settings provider:', settings.provider);
+      console.log('[useModelSelection] Settings model:', settings.model);
+      console.log('[useModelSelection] Current provider:', currentProvider);
       
-      // Select appropriate model for the new provider
-      let effectiveModel = availableModels.length > 0 ? availableModels[0] : 'default';
-      if (settings.model && configs[settings.model]) {
-        effectiveModel = settings.model;
+      // Only reload models if provider actually changed
+      if (currentProvider !== null && settings.provider !== currentProvider) {
+        console.log('[useModelSelection] Provider changed from', currentProvider, 'to', settings.provider);
+        
+        // Reload models when provider changes - pass the provider explicitly
+        const configs = await window.electron.getModelConfigs(settings.provider);
+        console.log(`[useModelSelection] Provider changed - raw configs:`, configs);
+        setModelConfigs(configs);
+        const availableModels = Object.keys(configs).filter(key => key !== 'default');
+        setModels(availableModels);
+        
+        console.log(`[useModelSelection] Provider changed - loaded ${availableModels.length} models for ${settings.provider}:`, availableModels);
+        
+        // When switching providers, try to use the saved model or default to first available
+        let effectiveModel = availableModels.length > 0 ? availableModels[0] : 'default';
+        
+        if (settings.model && configs[settings.model]) {
+          // Use the saved model if it exists for this provider
+          effectiveModel = settings.model;
+        }
+        
+        setSelectedModel(effectiveModel);
+        console.log('[useModelSelection] Provider changed - set model to:', effectiveModel);
       }
-      setSelectedModel(effectiveModel);
+      
+      // Update current provider
+      setCurrentProvider(settings.provider);
     });
     
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, []);
+  }, [currentProvider]);
 
   // Save model selection to settings when it changes
   useEffect(() => {
@@ -80,15 +109,21 @@ export const useModelSelection = () => {
 
     const saveModelSelection = async () => {
       try {
-        console.log(`Attempting to save selected model: ${selectedModel}`);
+        console.log(`[useModelSelection] Attempting to save selected model: ${selectedModel}`);
         const settings = await window.electron.getSettings();
+        console.log(`[useModelSelection] Current settings model: ${settings.model}`);
         // Check if the model actually changed before saving
         if (settings.model !== selectedModel) {
-          console.log(`Saving new model selection: ${selectedModel}`);
-          await window.electron.saveSettings({ ...settings, model: selectedModel });
+          console.log(`[useModelSelection] Model changed - saving new selection: ${selectedModel}`);
+          const newSettings = { ...settings, model: selectedModel };
+          console.log(`[useModelSelection] New settings to save:`, newSettings);
+          await window.electron.saveSettings(newSettings);
+          console.log(`[useModelSelection] Model saved successfully`);
+        } else {
+          console.log(`[useModelSelection] Model unchanged, skipping save`);
         }
       } catch (error) {
-        console.error('Error saving model selection:', error);
+        console.error('[useModelSelection] Error saving model selection:', error);
       }
     };
 

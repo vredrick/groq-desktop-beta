@@ -1,20 +1,21 @@
-const { shell } = require('electron');
-const storage = require('electron-json-storage'); // Use electron-json-storage
-const { promisify } = require('util'); // Needed for converting callback API to promise API
+// Node.js built-in modules
+const crypto = require('crypto');
+const http = require('http');
+const net = require('net');
+const { promisify } = require('util');
 const { URL } = require('url');
-const crypto = require('crypto'); // Import crypto for state generation
-const http = require('http'); // Required for local server
-const net = require('net');   // Required to find free port
 
-// Assuming these types and functions are correctly exported by the SDK
+// External dependencies
+const { shell } = require('electron');
+const storage = require('electron-json-storage');
+
+// MCP SDK
 const {
     discoverOAuthMetadata,
     startAuthorization,
     exchangeAuthorization,
-    registerClient,
-    // LATEST_PROTOCOL_VERSION, // Might need this if not handled by SDK functions
-    // Types: OAuthMetadata, OAuthClientInformation, OAuthClientInformationFull, OAuthTokens, OAuthClientMetadata
-} = require('@modelcontextprotocol/sdk/client/auth.js'); // Corrected path
+    registerClient
+} = require('@modelcontextprotocol/sdk/client/auth.js');
 
 // --- Promisify electron-json-storage methods ---
 const storageGet = promisify(storage.get);

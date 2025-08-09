@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ModelDropdown from './ModelDropdown';
 
-function ChatInput({ onSendMessage, loading = false, visionSupported = false, selectedModel, onModelChange, models = [], onOpenTools, isToolsOpen = false, onStop }) {
+function ChatInput({ onSendMessage, loading = false, visionSupported = false, selectedModel, onModelChange, models = [], modelConfigs = {}, onOpenTools, isToolsOpen = false, onStop }) {
   const [message, setMessage] = useState('');
   const [images, setImages] = useState([]); // State for selected images
   const textareaRef = useRef(null);
@@ -209,21 +210,13 @@ function ChatInput({ onSendMessage, loading = false, visionSupported = false, se
             <div className="right-controls">
               {/* Model Selector */}
               {models.length > 0 && (
-                <div className="model-selector-wrapper">
-                  <select
-                    value={selectedModel}
-                    onChange={(e) => onModelChange(e.target.value)}
-                    className="model-selector-dropdown"
-                    disabled={loading}
-                  >
-                    {models.map(model => (
-                      <option key={model} value={model}>{model}</option>
-                    ))}
-                  </select>
-                  <svg className="model-selector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M6 9l6 6 6-6" />
-                  </svg>
-                </div>
+                <ModelDropdown
+                  selectedModel={selectedModel}
+                  onModelChange={onModelChange}
+                  models={models}
+                  modelConfigs={modelConfigs}
+                  disabled={loading}
+                />
               )}
               
               {/* Send/Stop Button */}

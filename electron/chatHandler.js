@@ -1,6 +1,12 @@
+// External dependencies
 const Groq = require('groq-sdk');
 const OpenAI = require('openai');
-const { pruneMessageHistory } = require('./messageUtils'); // Import pruning logic
+
+// Local modules
+const { pruneMessageHistory } = require('./messageUtils');
+
+// Shared models
+const { OPENAI_MODELS } = require('../shared/openAIModels.js');
 const { OPENROUTER_MODELS } = require('../shared/openRouterModels.js');
 
 /**
@@ -136,6 +142,174 @@ function extractToolCallsFromText(text, availableTools) {
 }
 
 /**
+ * Handles GPT-5 models using the Responses API
+ */
+async function handleGPT5ResponsesAPI(event, client, messages, modelToUse, settings, tools) {
+    console.log(`[GPT-5] Using Responses API for model: ${modelToUse}`);
+    
+    try {
+        // Convert messages to the Responses API format
+        // The Responses API uses 'input' instead of 'messages'
+        const _lastUserMessage = messages[messages.length - 1];
+        let input = '';
+        
+        // Convert messages to Responses API format
+        // The Responses API accepts an array of message objects
+        const inputMessages = messages.map(msg => {
+            let content = '';
+            if (typeof msg.content === 'string') {
+                content = msg.content;
+            } else if (Array.isArray(msg.content)) {
+                // Extract text from content array
+                content = msg.content
+                    .filter(part => part.type === 'text')
+                    .map(part => part.text)
+                    .join('\n');
+            }
+            
+            return {
+                role: msg.role === 'system' ? 'developer' : msg.role, // Convert system to developer
+                content: content
+            };
+        });
+        
+        // The Responses API uses input as an array of messages
+        input = inputMessages;
+        
+        // Filter out system messages for GPT-5 - don't add any system prompts
+        const filteredInput = inputMessages.filter(msg => msg.role !== 'developer');
+        
+        // Prepare the Responses API parameters
+        const responsesParams = {
+            model: modelToUse,
+            input: filteredInput,
+            reasoning: {
+                effort: settings.reasoning_effort || 'medium' // Can be 'minimal', 'low', 'medium', 'high'
+            },
+            text: {
+                verbosity: settings.text_verbosity || 'medium' // Can be 'low', 'medium', 'high'
+            }
+        };
+        
+        // Add tools if available (GPT-5 supports native MCP tools)
+        if (tools && tools.length > 0) {
+            responsesParams.tools = tools;
+        }
+        
+        console.log(`[GPT-5] Sending to Responses API:`, {
+            model: responsesParams.model,
+            inputLength: input.length,
+            hasTools: !!responsesParams.tools,
+            toolCount: responsesParams.tools?.length
+        });
+        
+        // Make the API call to /v1/responses endpoint using fetch
+        // The OpenAI SDK doesn't have a responses method yet, so we'll use the raw API
+        const apiResponse = await fetch('https://api.openai.com/v1/responses', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${settings.OPENAI_API_KEY}`
+            },
+            body: JSON.stringify(responsesParams)
+        });
+        
+        if (!apiResponse.ok) {
+            const errorData = await apiResponse.json();
+            throw new Error(`Responses API error: ${errorData.error?.message || apiResponse.statusText}`);
+        }
+        
+        const response = await apiResponse.json();
+        
+        // Send the response back
+        event.sender.send('chat-stream-start', {
+            id: response.id || `gpt5_${Date.now()}`,
+            role: 'assistant'
+        });
+        
+        // Parse the output based on the Responses API format
+        let textContent = '';
+        let toolCalls = [];
+        let reasoningContent = '';
+        
+        if (response.output && Array.isArray(response.output)) {
+            for (const item of response.output) {
+                if (item.type === 'message' && item.content) {
+                    // Extract text content from message
+                    for (const content of item.content) {
+                        if (content.type === 'output_text') {
+                            textContent += content.text;
+                        } else if (content.type === 'text') {
+                            // Fallback for different format
+                            textContent += content.text;
+                        }
+                    }
+                } else if (item.type === 'reasoning') {
+                    // Capture reasoning content
+                    reasoningContent = item.summary ? item.summary.join('\n') : '';
+                } else if (item.type === 'custom_tool_call') {
+                    // Handle custom tool calls (GPT-5 specific)
+                    toolCalls.push({
+                        id: item.call_id,
+                        type: 'function',
+                        function: {
+                            name: item.name,
+                            arguments: JSON.stringify({ input: item.input })
+                        }
+                    });
+                } else if (item.type === 'tool_call') {
+                    // Handle standard tool calls
+                    toolCalls.push({
+                        id: item.id,
+                        type: 'function',
+                        function: item.function
+                    });
+                }
+            }
+        }
+        
+        // Send the content
+        if (textContent) {
+            event.sender.send('chat-stream-content', { 
+                content: textContent 
+            });
+        }
+        
+        // Handle tool calls if any
+        if (toolCalls.length > 0) {
+            event.sender.send('chat-stream-tool-calls', { 
+                tool_calls: toolCalls 
+            });
+        }
+        
+        // Send completion with reasoning output
+        event.sender.send('chat-stream-complete', {
+            content: textContent,
+            role: 'assistant',
+            tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+            reasoning: reasoningContent || response.reasoning_output || null, // GPT-5 includes reasoning output
+            finish_reason: 'stop'
+        });
+        
+        return true; // Successfully handled
+        
+    } catch (error) {
+        console.error('[GPT-5] Error with Responses API:', error);
+        
+        // If Responses API fails with 404, fall back to Chat Completions API
+        if (error.message?.includes('404') || error.message?.includes('Not Found')) {
+            console.log('[GPT-5] Responses API endpoint not available, falling back to Chat Completions API');
+            // Continue with the regular chat completions flow
+            return false; // Signal to continue with regular flow
+        }
+        
+        // For other errors, we might still want to fall back
+        console.log('[GPT-5] Responses API failed, falling back to Chat Completions API');
+        return false; // Fall back to Chat Completions API
+    }
+}
+
+/**
  * Handles the 'chat-stream' IPC event for streaming chat completions.
  *
  * @param {Electron.IpcMainEvent} event - The IPC event object.
@@ -146,11 +320,16 @@ function extractToolCallsFromText(text, availableTools) {
  * @param {Array<object>} discoveredTools - List of available MCP tools.
  */
 async function handleChatStream(event, messages, model, settings, modelContextSizes, discoveredTools) {
-    console.log(`Handling chat-stream request. Model: ${model || 'using settings'}, Messages: ${messages?.length}`);
+    console.log(`Handling chat-stream request. Model argument: ${model || 'none'}, Settings model: ${settings.model}, Provider: ${settings.provider}, Messages: ${messages?.length}`);
 
     try {
         // Validate API Key based on provider
-        if (settings.provider === 'openrouter') {
+        if (settings.provider === 'openai') {
+            if (!settings.OPENAI_API_KEY || settings.OPENAI_API_KEY === "<replace me>") {
+                event.sender.send('chat-stream-error', { error: "OpenAI API key not configured. Please add your OpenAI API key in settings." });
+                return;
+            }
+        } else if (settings.provider === 'openrouter') {
             if (!settings.OPENROUTER_API_KEY || settings.OPENROUTER_API_KEY === "<replace me>") {
                 event.sender.send('chat-stream-error', { error: "OpenRouter API key not configured. Please add your OpenRouter API key in settings." });
                 return;
@@ -163,11 +342,23 @@ async function handleChatStream(event, messages, model, settings, modelContextSi
         }
 
         // Determine model to use: prioritise argument, then settings, then fallback
+        console.log(`[Model Selection] ==========================================`);
+        console.log(`[Model Selection] Provider: ${settings.provider}`);
+        console.log(`[Model Selection] Model argument passed: ${model || 'none'}`);
+        console.log(`[Model Selection] Settings model: ${settings.model || 'none'}`);
         const modelToUse = model || settings.model || "llama-3.3-70b-versatile";
+        console.log(`[Model Selection] Final model to use: ${modelToUse}`);
+        console.log(`[Model Selection] ==========================================`);
         
         // Get model info based on provider
         let modelInfo;
-        if (settings.provider === 'openrouter') {
+        
+        if (settings.provider === 'openai') {
+            // Check OpenAI models
+            modelInfo = OPENAI_MODELS[modelToUse] || OPENAI_MODELS['default'];
+            console.log(`[OpenAI] Model ${modelToUse} found in OPENAI_MODELS:`, !!OPENAI_MODELS[modelToUse]);
+            console.log(`[OpenAI] Using model info:`, modelInfo);
+        } else if (settings.provider === 'openrouter') {
             // Check OpenRouter models first, then custom models
             modelInfo = OPENROUTER_MODELS[modelToUse] || OPENROUTER_MODELS['default'];
             
@@ -175,10 +366,14 @@ async function handleChatStream(event, messages, model, settings, modelContextSi
             if (settings.openRouterCustomModels && settings.openRouterCustomModels.includes(modelToUse)) {
                 modelInfo = OPENROUTER_MODELS['default'];
             }
-        } else {
+        } else if (settings.provider === 'groq' || settings.provider === 'custom') {
+            // Only use modelContextSizes for Groq provider
             modelInfo = modelContextSizes[modelToUse] || modelContextSizes['default'] || { context: 8192, vision_supported: false };
+        } else {
+            // Unknown provider - use default
+            modelInfo = { context: 8192, vision_supported: false };
         }
-        console.log(`Using model: ${modelToUse} (Context: ${modelInfo.context}, Vision: ${modelInfo.vision_supported})`);
+        console.log(`Using model: ${modelToUse} (Context: ${modelInfo.context}, Vision: ${modelInfo.vision_supported}, API Type: ${modelInfo.api_type || 'chat'})`);
 
         // Check for vision support if images are present
         const hasImages = messages.some(msg =>
@@ -196,8 +391,21 @@ async function handleChatStream(event, messages, model, settings, modelContextSi
         // Initialize SDK based on provider
         let client;
         
-        if (settings.provider === 'openrouter') {
+        if (settings.provider === 'openai') {
+            // Use OpenAI SDK for direct OpenAI access
+            console.log(`[OpenAI] ==========================================`);
+            console.log(`[OpenAI] Initializing client for model: ${modelToUse}`);
+            console.log(`[OpenAI] Available OpenAI models:`, Object.keys(OPENAI_MODELS));
+            console.log(`[OpenAI] Model info for ${modelToUse}:`, modelInfo);
+            console.log(`[OpenAI] API Key present:`, !!settings.OPENAI_API_KEY);
+            console.log(`[OpenAI] API Key starts with:`, settings.OPENAI_API_KEY?.substring(0, 7));
+            console.log(`[OpenAI] ==========================================`);
+            client = new OpenAI({ 
+                apiKey: settings.OPENAI_API_KEY
+            });
+        } else if (settings.provider === 'openrouter') {
             // Use OpenAI SDK for OpenRouter
+            console.log(`[OpenRouter] Initializing client for model: ${modelToUse}`);
             client = new OpenAI({ 
                 apiKey: settings.OPENROUTER_API_KEY,
                 baseURL: 'https://openrouter.ai/api/v1',
@@ -385,6 +593,7 @@ async function handleChatStream(event, messages, model, settings, modelContextSi
         
         // Model-specific system prompts for better tool usage
         const modelLower = modelToUse.toLowerCase();
+        
         if (modelLower.includes('kimi') || modelLower.includes('moonshot')) {
             // Moonshot/Kimi models need explicit tool instructions
             systemPrompt = `You are a helpful assistant with access to tools/functions. When a user asks you to perform an action that matches available tools, you MUST use the appropriate tool by calling it in the proper format.
@@ -418,14 +627,24 @@ IMPORTANT:
                 ...prunedMessages // Use the pruned history
             ],
             model: modelToUse,
-            temperature: getOptimalTemperature(modelToUse, tools.length > 0, settings.temperature),
-            top_p: settings.top_p ?? 0.95,
-            ...(tools.length > 0 && { 
-                tools: tools, 
-                tool_choice: getOptimalToolChoice(modelToUse, messages)
-            }),
             stream: true
         };
+        
+        // GPT-5 models don't support custom temperature/top_p - use defaults
+        if (settings.provider === 'openai' && modelToUse.includes('gpt-5')) {
+            // GPT-5 uses default values only
+            console.log(`[OpenAI] GPT-5 model detected, using default temperature/top_p`);
+        } else {
+            // Other models support custom temperature/top_p
+            chatCompletionParams.temperature = getOptimalTemperature(modelToUse, tools.length > 0, settings.temperature);
+            chatCompletionParams.top_p = settings.top_p ?? 0.95;
+        }
+        
+        // Add tools if available
+        if (tools.length > 0) {
+            chatCompletionParams.tools = tools;
+            chatCompletionParams.tool_choice = getOptimalToolChoice(modelToUse, messages);
+        }
         
         // Debug: Log full conversation context including tool messages
         console.log(`[ChatHandler] Full conversation context:`, chatCompletionParams.messages.map(m => ({
@@ -449,7 +668,22 @@ IMPORTANT:
         //     chatCompletionParams.reasoning_format = "parsed";
         // }
 
-        // --- Streaming and Retry Logic --- (Moved inside try block)
+        // Check if this is a GPT-5 model and use Responses API
+        if (settings.provider === 'openai' && modelToUse.includes('gpt-5')) {
+            console.log(`[OpenAI] GPT-5 model detected: ${modelToUse}, attempting to use Responses API`);
+            try {
+                const responsesHandled = await handleGPT5ResponsesAPI(event, client, prunedMessages, modelToUse, settings, tools);
+                if (responsesHandled) {
+                    console.log(`[OpenAI] Successfully handled with Responses API`);
+                    return; // Exit if Responses API succeeded
+                }
+            } catch (responsesError) {
+                console.warn(`[OpenAI] Responses API failed, falling back to Chat Completions API:`, responsesError.message);
+                // Continue with Chat Completions API as fallback
+            }
+        }
+        
+        // --- Streaming and Retry Logic for Chat Completions API --- (Moved inside try block)
         let retryCount = 0;
         const MAX_TOOL_USE_RETRIES = 3; // Slightly reduced retries
 
@@ -467,9 +701,48 @@ IMPORTANT:
                     hasTools: !!chatCompletionParams.tools,
                     toolCount: chatCompletionParams.tools?.length,
                     toolChoice: chatCompletionParams.tool_choice,
-                    messageCount: chatCompletionParams.messages.length
+                    messageCount: chatCompletionParams.messages.length,
+                    provider: settings.provider,
+                    temperature: chatCompletionParams.temperature,
+                    top_p: chatCompletionParams.top_p
                 }, null, 2));
-                const stream = await client.chat.completions.create(chatCompletionParams);
+                
+                // Log the exact model being sent
+                if (settings.provider === 'openrouter') {
+                    console.log(`[OpenRouter] Requesting model: "${chatCompletionParams.model}"`);
+                } else if (settings.provider === 'openai') {
+                    console.log(`[OpenAI] ⚠️ SENDING REQUEST TO OPENAI API WITH MODEL: "${chatCompletionParams.model}"`);
+                    console.log(`[OpenAI] Full request params:`, {
+                        model: chatCompletionParams.model,
+                        temperature: chatCompletionParams.temperature,
+                        top_p: chatCompletionParams.top_p,
+                        stream: chatCompletionParams.stream,
+                        messageCount: chatCompletionParams.messages.length
+                    });
+                }
+                
+                let stream;
+                try {
+                    stream = await client.chat.completions.create(chatCompletionParams);
+                } catch (apiError) {
+                    console.error(`[OpenAI] API Error:`, apiError);
+                    console.error(`[OpenAI] Error response:`, apiError.response?.data || apiError.message);
+                    console.error(`[OpenAI] Error status:`, apiError.response?.status || apiError.status);
+                    
+                    if (apiError.response?.status === 404 || apiError.status === 404) {
+                        console.error(`[OpenAI] 404 Error - Model "${chatCompletionParams.model}" not found`);
+                        if (chatCompletionParams.model.includes('gpt-5')) {
+                            console.error(`[OpenAI] GPT-5 is not available with your API key`);
+                            console.error(`[OpenAI] Please check:`);
+                            console.error(`[OpenAI] 1. Your API tier level`);
+                            console.error(`[OpenAI] 2. Whether you have GPT-5 access enabled`);
+                            console.error(`[OpenAI] 3. The OpenAI platform announcements for GPT-5 availability`);
+                        }
+                    } else if (apiError.message?.includes('model_not_found')) {
+                        console.error(`[OpenAI] Model "${chatCompletionParams.model}" is not recognized by the API`);
+                    }
+                    throw apiError;
+                }
 
                 for await (const chunk of stream) {
                     if (!chunk.choices || !chunk.choices.length || !chunk.choices[0]) continue;
@@ -479,6 +752,38 @@ IMPORTANT:
 
                     if (isFirstChunk) {
                         streamId = chunk.id; // Capture stream ID
+                        // Log the model returned in the response if available
+                        if (chunk.model) {
+                            if (settings.provider === 'openai') {
+                                console.log(`[OpenAI] Response model from API: "${chunk.model}"`);
+                                console.log(`[OpenAI] Requested model was: "${chatCompletionParams.model}"`);
+                                if (chunk.model !== chatCompletionParams.model) {
+                                    console.warn(`[OpenAI] ⚠️ Model mismatch! Requested: "${chatCompletionParams.model}", Got: "${chunk.model}"`);
+                                    console.warn(`[OpenAI] This may indicate the requested model is not available or there's a fallback.`);
+                                    
+                                    // Special handling for GPT-5 fallback
+                                    if (chatCompletionParams.model.includes('gpt-5') && chunk.model.includes('gpt-4')) {
+                                        console.error(`[OpenAI] ⚠️ GPT-5 MODEL NOT AVAILABLE - API returned GPT-4 instead!`);
+                                        console.error(`[OpenAI] This likely means:`);
+                                        console.error(`[OpenAI] 1. Your API key doesn't have access to GPT-5 yet`);
+                                        console.error(`[OpenAI] 2. You may need a specific tier or waitlist access`);
+                                        console.error(`[OpenAI] 3. GPT-5 might be in limited release`);
+                                        
+                                        // Send a warning to the user
+                                        event.sender.send('chat-stream-content', { 
+                                            content: `\n\n⚠️ Note: GPT-5 (${chatCompletionParams.model}) was requested but OpenAI returned ${chunk.model}. This indicates GPT-5 is not available for your API key.\n\n` 
+                                        });
+                                    }
+                                }
+                            } else if (settings.provider === 'openrouter') {
+                                console.log(`[OpenRouter] Response model: "${chunk.model}"`);
+                                if (chunk.model !== chatCompletionParams.model) {
+                                    console.warn(`[OpenRouter] Model mismatch! Requested: "${chatCompletionParams.model}", Got: "${chunk.model}"`);
+                                }
+                            } else {
+                                console.log(`[${settings.provider}] Response model: "${chunk.model}"`);
+                            }
+                        }
                         event.sender.send('chat-stream-start', {
                             id: streamId,
                             role: delta?.role || "assistant"

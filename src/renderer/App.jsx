@@ -24,8 +24,30 @@ function App() {
     selectedModel,
     setSelectedModel,
     models,
-    visionSupported
+    visionSupported,
+    modelConfigs
   } = useModelSelection();
+  
+  // Debug logging
+  useEffect(() => {
+    console.log('[App] Current models:', models);
+    console.log('[App] Selected model:', selectedModel);
+    console.log('[App] Model configs:', modelConfigs);
+  }, [models, selectedModel, modelConfigs]);
+  
+  // Handle model change explicitly
+  const handleModelChange = (newModel) => {
+    console.log('[App] handleModelChange called with:', newModel);
+    console.log('[App] Current selected model:', selectedModel);
+    console.log('[App] Available models:', models);
+    
+    if (models.includes(newModel)) {
+      console.log('[App] Setting new model:', newModel);
+      setSelectedModel(newModel);
+    } else {
+      console.error('[App] Model not in available models:', newModel);
+    }
+  };
   
   // MCP servers
   const {
@@ -126,8 +148,9 @@ function App() {
             loading={loading}
             visionSupported={visionSupported}
             selectedModel={selectedModel}
-            onModelChange={setSelectedModel}
+            onModelChange={handleModelChange}
             models={models}
+            modelConfigs={modelConfigs}
             onOpenTools={() => {
               setIsToolsPanelOpen(!isToolsPanelOpen);
               if (!isToolsPanelOpen) {
